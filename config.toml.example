@@ -1,0 +1,44 @@
+# ─── Kubuno Jarvis — Configuration ───────────────────────────────────────────
+# Copiez ce fichier en config.toml et adaptez les valeurs.
+# Les variables d'environnement préfixées KJ__ surchargent ce fichier.
+# Exemple : KJ__SERVER__PORT=3107
+
+[server]
+host = "127.0.0.1"
+port = 3107
+
+[core]
+url             = "http://127.0.0.1:8080"
+internal_secret = "change_me"
+
+# ── Base de données ───────────────────────────────────────────────────────────
+# Les paramètres sont injectés par le superviseur via KUBUNO_DB_*.
+# Pour un démarrage hors superviseur, exporter ces variables manuellement.
+
+# ── LLM local (Ollama) ────────────────────────────────────────────────────────
+[ollama]
+enabled       = true
+url           = "http://localhost:11434"
+default_model = "llama3.2:3b"
+timeout_secs  = 120
+
+# ── Fournisseurs cloud (optionnels) ──────────────────────────────────────────
+[providers.openai]
+enabled       = false
+api_key       = ""
+base_url      = "https://api.openai.com/v1"
+default_model = "gpt-4o"
+
+[providers.anthropic]
+enabled       = false
+api_key       = ""
+default_model = "claude-3-5-sonnet-20241022"
+
+[providers.google]
+enabled       = false
+api_key       = ""
+default_model = "gemini-1.5-flash"
+
+[logging]
+level  = "info"
+format = "pretty"

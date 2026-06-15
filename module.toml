@@ -1,0 +1,56 @@
+[module]
+id           = "jarvis"
+display_name = "Jarvis"
+version      = "0.1.0"
+description  = "Assistant IA self-hosted — Ollama local, multi-modèles, agents personnalisés."
+author       = "Kubuno Contributors"
+license      = "AGPL-3.0"
+homepage_url = "https://github.com/kubuno/kubuno"
+runtime      = "rust"
+dependencies = []
+settings_path = "/jarvis/settings"
+
+[process]
+entrypoint = "kubuno-jarvis"
+args       = []
+
+[server]
+host = "127.0.0.1"
+port = 3107
+
+[routes]
+patterns = [
+    { method = "*", path = "/*" },
+]
+
+[[sidebar_items]]
+id       = "jarvis"
+label    = "Jarvis"
+icon     = "Sparkles"
+path     = "/jarvis"
+position = 50
+section  = "main"
+
+[events]
+subscribed = []
+publishes  = []
+
+[[cli_commands]]
+name        = "chat"
+description = "Démarrer une session de chat interactive avec Jarvis"
+usage       = "kubuno jarvis:chat [--model <modèle>] [--agent <nom>]"
+
+[[cli_commands]]
+name        = "models"
+description = "Lister les modèles LLM disponibles"
+usage       = "kubuno jarvis:models"
+
+[[cli_commands]]
+name        = "providers"
+description = "Afficher les fournisseurs LLM configurés"
+usage       = "kubuno jarvis:providers"
+
+[[cli_commands]]
+name        = "agents"
+description = "Lister les agents Jarvis disponibles"
+usage       = "kubuno jarvis:agents"
