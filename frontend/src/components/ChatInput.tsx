@@ -161,7 +161,7 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
   const modelLabel   = currentModel?.name ?? 'Modèle'
 
   return (
-    <div className="px-4 py-4">
+    <div className="px-4 py-4 no-print">
       <div className="max-w-3xl mx-auto">
         {/* Input card */}
         <div
