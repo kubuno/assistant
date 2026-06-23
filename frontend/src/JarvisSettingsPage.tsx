@@ -1,18 +1,162 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
-  ChevronLeft, Sparkles, Settings2, Bot,
-  Plus, Pencil, Trash2, Save, CheckCircle, XCircle,
-  Eye, EyeOff, AlertCircle,
+  ArrowLeft, Sparkles, Bot,
+  Plus, Pencil, Trash2, Save, CheckCircle, XCircle, Check,
+  Eye, EyeOff, AlertCircle, ExternalLink,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAuthStore } from '@kubuno/sdk'
 import { jarvisApi, type JarvisAgent, type ProviderConfig, type UpdateProviderDto } from './api'
-import { Toggle, Button, Tabs, Input, Textarea } from '@ui'
-import type { TabDef } from '@ui'
+import { Toggle, Button, Input, Textarea, Radio } from '@ui'
+import { useModulePrefs } from './userPrefs'
 
-type Tab = 'providers' | 'agents'
+// ── Per-user preferences (backend, cross-device via core users.preferences) ─────
 
-// ── Providers tab ──────────────────────────────────────────────────────────────
+interface JarvisPrefs {
+  responseStyle:  string   // 'concise' | 'balanced' | 'detailed'
+  sendOnEnter:    boolean  // Enter sends (Shift+Enter = newline) vs the inverse
+  streaming:      boolean  // stream the answer token by token
+  showTimestamps: boolean  // show the time under each message
+  showTokens:     boolean  // show token usage under assistant replies
+  bubbleTheme:    string   // 'default' | 'compact' | 'comfortable'
+}
+
+const DEFAULT_PREFS: JarvisPrefs = {
+  responseStyle: 'balanced', sendOnEnter: true, streaming: true,
+  showTimestamps: false, showTokens: true, bubbleTheme: 'default',
+}
+
+// ── Mail-style layout helpers ───────────────────────────────────────────────────
+
+function SettingsRow({ label, description, children }: {
+  label: string; description?: string; children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start gap-8 py-4 border-b border-[#e8eaed] last:border-0">
+      <div className="w-60 flex-shrink-0">
+        <p className="text-sm text-[#202124] font-normal">{label}</p>
+        {description && <p className="text-xs text-text-tertiary mt-0.5 leading-relaxed">{description}</p>}
+      </div>
+      <div className="flex-1">{children}</div>
+    </div>
+  )
+}
+
+function RadioGroup({ options, value, onChange }: {
+  options: { value: string; label: string }[]; value: string; onChange: (v: string) => void
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2">
+      {options.map(opt => (
+        <Radio key={opt.value} checked={value === opt.value} onChange={() => onChange(opt.value)} label={opt.label} />
+      ))}
+    </div>
+  )
+}
+
+// ── Préférences tab (per-user) ──────────────────────────────────────────────────
+
+function PreferencesTab() {
+  const { t } = useTranslation('jarvis')
+  const { prefs: saved, update } = useModulePrefs<JarvisPrefs>('jarvis', DEFAULT_PREFS)
+  const [prefs, setPrefs] = useState<JarvisPrefs>(saved)
+  const [savedFlag, setSavedFlag] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const set = <K extends keyof JarvisPrefs>(key: K, value: JarvisPrefs[K]) =>
+    setPrefs(p => ({ ...p, [key]: value }))
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await update(prefs)
+      setSavedFlag(true)
+      setTimeout(() => setSavedFlag(false), 2500)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div>
+      <SettingsRow
+        label={t('jarvis_pref_style', { defaultValue: 'Style des réponses' })}
+        description={t('jarvis_pref_style_desc', { defaultValue: 'Longueur et niveau de détail attendus de l\'assistant.' })}
+      >
+        <RadioGroup
+          value={prefs.responseStyle}
+          onChange={v => set('responseStyle', v)}
+          options={[
+            { value: 'concise',  label: t('jarvis_pref_style_concise',  { defaultValue: 'Concis (réponses courtes)' }) },
+            { value: 'balanced', label: t('jarvis_pref_style_balanced', { defaultValue: 'Équilibré' }) },
+            { value: 'detailed', label: t('jarvis_pref_style_detailed', { defaultValue: 'Détaillé (explications complètes)' }) },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('jarvis_pref_bubble', { defaultValue: 'Densité de la conversation' })}
+        description={t('jarvis_pref_bubble_desc', { defaultValue: 'Espacement entre les messages.' })}
+      >
+        <RadioGroup
+          value={prefs.bubbleTheme}
+          onChange={v => set('bubbleTheme', v)}
+          options={[
+            { value: 'compact',     label: t('jarvis_pref_bubble_compact',     { defaultValue: 'Compacte' }) },
+            { value: 'default',     label: t('jarvis_pref_bubble_default',     { defaultValue: 'Normale' }) },
+            { value: 'comfortable', label: t('jarvis_pref_bubble_comfortable', { defaultValue: 'Confortable' }) },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('jarvis_pref_send', { defaultValue: 'Envoi du message' })}
+        description={t('jarvis_pref_send_desc', { defaultValue: 'Touche Entrée pour envoyer ; Maj+Entrée insère un saut de ligne.' })}
+      >
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <Toggle checked={prefs.sendOnEnter} onChange={() => set('sendOnEnter', !prefs.sendOnEnter)} />
+          <span className="text-sm text-text-primary">{t('jarvis_pref_send_on', { defaultValue: 'Envoyer avec la touche Entrée' })}</span>
+        </label>
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('jarvis_pref_streaming', { defaultValue: 'Réponses en continu' })}
+        description={t('jarvis_pref_streaming_desc', { defaultValue: 'Afficher la réponse au fur et à mesure de sa génération.' })}
+      >
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <Toggle checked={prefs.streaming} onChange={() => set('streaming', !prefs.streaming)} />
+          <span className="text-sm text-text-primary">{t('jarvis_pref_streaming_on', { defaultValue: 'Activer le streaming' })}</span>
+        </label>
+      </SettingsRow>
+
+      <SettingsRow label={t('jarvis_pref_timestamps', { defaultValue: 'Horodatage' })}>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <Toggle checked={prefs.showTimestamps} onChange={() => set('showTimestamps', !prefs.showTimestamps)} />
+          <span className="text-sm text-text-primary">{t('jarvis_pref_timestamps_on', { defaultValue: 'Afficher l\'heure sous chaque message' })}</span>
+        </label>
+      </SettingsRow>
+
+      <SettingsRow label={t('jarvis_pref_tokens', { defaultValue: 'Jetons (tokens)' })}>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <Toggle checked={prefs.showTokens} onChange={() => set('showTokens', !prefs.showTokens)} />
+          <span className="text-sm text-text-primary">{t('jarvis_pref_tokens_on', { defaultValue: 'Afficher l\'utilisation des jetons sous les réponses' })}</span>
+        </label>
+      </SettingsRow>
+
+      <div className="pt-5 flex items-center gap-3">
+        <Button onClick={save} loading={busy}>
+          {savedFlag
+            ? <><Check size={14} className="mr-1.5 inline" />{t('jarvis_settings_saved', { defaultValue: 'Enregistré' })}</>
+            : t('jarvis_settings_save_changes', { defaultValue: 'Enregistrer les modifications' })}
+        </Button>
+        <Button variant="ghost" onClick={() => setPrefs(saved)}>
+          {t('common_cancel', { defaultValue: 'Annuler' })}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ── Admin-only providers tab (instance-wide secrets: API keys / endpoints) ──────
 
 const PROVIDER_META: Record<string, { name: string; colorClass: string; icon: string }> = {
   ollama:    { name: 'Ollama',        colorClass: 'bg-purple-100 text-purple-700',   icon: '🦙' },
@@ -159,7 +303,7 @@ function ProvidersTab() {
   )
 }
 
-// ── Agents tab ─────────────────────────────────────────────────────────────────
+// ── Agents tab (per-user custom agents) ──────────────────────────────────────────
 
 interface AgentFormData {
   name:          string
@@ -317,7 +461,7 @@ function AgentsTab() {
         />
       )}
 
-      {/* Agents personnalisés */}
+      {/* Custom agents */}
       {userAgents.length === 0 && !creating ? (
         <div className="border border-dashed border-border rounded-xl p-8 text-center">
           <Bot size={32} className="mx-auto text-text-tertiary mb-2" />
@@ -385,7 +529,7 @@ function AgentsTab() {
         </div>
       )}
 
-      {/* Agents système (lecture seule) */}
+      {/* System agents (read-only) */}
       {systemAgents.length > 0 && (
         <div>
           <p className="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
@@ -415,44 +559,84 @@ function AgentsTab() {
   )
 }
 
-// ── Page principale ────────────────────────────────────────────────────────────
+// ── About tab ───────────────────────────────────────────────────────────────────
+
+function AboutTab() {
+  const { t } = useTranslation('jarvis')
+  return (
+    <div className="rounded-xl border border-border overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-surface-1">
+        <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+          <Sparkles size={20} className="text-violet-600" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-text-primary">Kubuno Jarvis</p>
+          <p className="text-xs text-text-tertiary">v0.1.0 · {t('jarvis_official_module', { defaultValue: 'Module officiel' })}</p>
+        </div>
+        <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Rust</span>
+      </div>
+      <div className="px-5 py-4">
+        <a href="https://github.com/kubuno/jarvis" target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+          <ExternalLink size={13} /> github.com/kubuno/jarvis
+        </a>
+      </div>
+    </div>
+  )
+}
+
+// ── Main page (mail-style breadcrumb + tab bar) ─────────────────────────────────
+
+type Tab = 'preferences' | 'agents' | 'providers' | 'about'
 
 export default function JarvisSettingsPage() {
   const { t } = useTranslation('jarvis')
-  const [tab, setTab] = useState<Tab>('providers')
+  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
+  const [tab, setTab] = useState<Tab>('preferences')
 
-  const TABS: TabDef<Tab>[] = [
-    { id: 'providers', label: t('jarvis_tab_providers'), icon: Settings2 },
-    { id: 'agents',    label: t('jarvis_tab_agents'),    icon: Bot },
+  // The providers tab holds instance-wide secrets (API keys) → admin-only.
+  const tabs: { id: Tab; label: string; adminOnly?: boolean }[] = [
+    { id: 'preferences', label: t('jarvis_tab_preferences', { defaultValue: 'Préférences' }) },
+    { id: 'agents',      label: t('jarvis_tab_agents', { defaultValue: 'Agents' }) },
+    { id: 'providers',   label: t('jarvis_tab_providers', { defaultValue: 'Fournisseurs' }), adminOnly: true },
+    { id: 'about',       label: t('jarvis_tab_about', { defaultValue: 'À propos' }) },
   ]
+  const visibleTabs = tabs.filter(tb => !tb.adminOnly || isAdmin)
 
   return (
-    <div className="flex-1 overflow-y-auto bg-surface-1">
-      <div className="max-w-3xl mx-auto px-6 py-8">
-
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <Link
-            to="/jarvis"
-            className="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-2 transition-colors"
-          >
-            <ChevronLeft size={18} />
-          </Link>
-          <div className="w-9 h-9 rounded-xl bg-primary-light flex items-center justify-center">
-            <Sparkles size={18} className="text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold text-text-primary">{t('jarvis_settings_title')}</h1>
-            <p className="text-xs text-text-tertiary">{t('jarvis_settings_subtitle')}</p>
-          </div>
+    <div className="flex flex-col h-full bg-white overflow-hidden">
+      {/* Breadcrumb header */}
+      <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#e8eaed] flex-shrink-0" style={{ background: '#f8f9fa' }}>
+        <Link to="/jarvis" className="flex items-center gap-1.5 text-sm text-[#1a73e8] hover:underline">
+          <ArrowLeft size={14} />
+          Jarvis
+        </Link>
+        <span className="text-text-tertiary text-sm">/</span>
+        <div className="flex items-center gap-1.5">
+          <Sparkles size={15} className="text-text-secondary" />
+          <span className="text-sm text-text-primary">{t('jarvis_settings_title', { defaultValue: 'Réglages' })}</span>
         </div>
+      </div>
 
-        <Tabs tabs={TABS} value={tab} onChange={setTab} className="mb-6" />
+      {/* Tab bar (Gmail-style) */}
+      <div className="flex items-end border-b border-[#e8eaed] px-4 flex-shrink-0 overflow-x-auto" style={{ background: '#fff' }}>
+        {visibleTabs.map(tb => (
+          <button key={tb.id} onClick={() => setTab(tb.id)}
+            className={`px-4 py-3 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
+              tab === tb.id ? 'border-[#1a73e8] text-[#1a73e8] font-medium' : 'border-transparent text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4]'}`}>
+            {tb.label}
+          </button>
+        ))}
+      </div>
 
-        {/* Content */}
-        {tab === 'providers' && <ProvidersTab />}
-        {tab === 'agents'    && <AgentsTab />}
-
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-8 py-6">
+          {tab === 'preferences' && <PreferencesTab />}
+          {tab === 'agents'      && <AgentsTab />}
+          {tab === 'providers'   && isAdmin && <ProvidersTab />}
+          {tab === 'about'       && <AboutTab />}
+        </div>
       </div>
     </div>
   )

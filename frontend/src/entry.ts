@@ -1,6 +1,6 @@
 /** Bundle MODULE jarvis — chargé à l'exécution (cf. vite.module.config). */
 import { lazy } from 'react'
-import { RouteRegistry, WaffleAppRegistry, useSidebarStore, useToolbarStore, SDK_VERSION } from '@kubuno/sdk'
+import { RouteRegistry, WaffleAppRegistry, ModuleSettingsRegistry, useSidebarStore, useToolbarStore, SDK_VERSION } from '@kubuno/sdk'
 import { Bot } from 'lucide-react'
 import './index.css'
 import './i18n'
@@ -12,6 +12,9 @@ export function register() {
   WaffleAppRegistry.register('jarvis', 'Jarvis', [
     { id: 'jarvis', label: 'Jarvis', Icon: Bot, path: '/jarvis' },
   ])
+
+  // The header gear button opens the per-user Jarvis settings while in /jarvis.
+  ModuleSettingsRegistry.register('jarvis')
 
   useToolbarStore.getState().register({
     moduleId:    'jarvis',
