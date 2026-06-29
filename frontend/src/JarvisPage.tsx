@@ -4,13 +4,14 @@ import ConversationPage from './components/ConversationPage'
 import HomePage from './components/HomePage'
 
 export default function JarvisPage() {
-  const { activeConvId, setActiveConv, fetchConversations, fetchAgents, fetchModels } = useJarvisStore()
+  const { activeConvId, setActiveConv, fetchConversations, fetchAgents, fetchModels, fetchFolders } = useJarvisStore()
 
   useEffect(() => {
     fetchConversations()
     fetchAgents()
     fetchModels()
-  }, [fetchConversations, fetchAgents, fetchModels])
+    fetchFolders()
+  }, [fetchConversations, fetchAgents, fetchModels, fetchFolders])
 
   return (
     <div className="flex h-full overflow-hidden">

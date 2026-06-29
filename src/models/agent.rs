@@ -10,6 +10,12 @@ pub struct Agent {
     pub system_prompt:    String,
     #[sqlx(rename = "preferred_model")]
     pub default_model:    Option<String>,
+    /// Emoji + couleur d'avatar (affichés dans le sélecteur d'agent).
+    pub avatar_emoji:     Option<String>,
+    pub avatar_color:     Option<String>,
+    /// Suggestions de prompts propres à l'agent : `[{label,prompt,icon}]`.
+    #[serde(default)]
+    pub prompt_suggestions: serde_json::Value,
     pub is_system:        bool,
     #[sqlx(rename = "owner_id")]
     pub created_by:       Option<Uuid>,

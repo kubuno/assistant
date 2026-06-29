@@ -6,6 +6,10 @@ use serde_json::json;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+use axum::async_trait;
+
+use super::agentic::{AgenticProvider, AgenticTurn, ToolOutcome, ToolUse};
+use super::mcp_client::ToolCatalogItem;
 use super::provider::{LlmMessage, StreamChunk};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -160,5 +164,85 @@ impl AnthropicService {
         });
 
         Ok(rx)
+    }
+}
+
+#[async_trait]
+impl AgenticProvider for AnthropicService {
+    fn tool_schema(&self, t: &ToolCatalogItem) -> serde_json::Value {
+        json!({
+            "name":         t.name,
+            "description":  t.description,
+            "input_schema": t.input_schema,
+        })
+    }
+
+    async fn complete_once(
+        &self,
+        model: &str,
+        system: &str,
+        messages: &[serde_json::Value],
+        tools: &[serde_json::Value],
+    ) -> Result<AgenticTurn> {
+        let mut body = json!({
+            "model":      model,
+            "max_tokens": 4096,
+            "messages":   messages,
+        });
+        if !system.is_empty() { body["system"] = json!(system); }
+        if !tools.is_empty()  { body["tools"]  = json!(tools); }
+
+        let resp = self.client
+            .post(format!("{}/v1/messages", self.base_url))
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", ANTHROPIC_VERSION)
+            .json(&body)
+            .send().await
+            .context("connexion Anthropic")?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text   = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Anthropic {status}: {text}");
+        }
+
+        let v: serde_json::Value = resp.json().await.context("réponse Anthropic invalide")?;
+        let content = v.get("content").cloned().unwrap_or_else(|| json!([]));
+        let mut text = String::new();
+        let mut tool_uses = Vec::new();
+        if let Some(arr) = content.as_array() {
+            for block in arr {
+                match block.get("type").and_then(|t| t.as_str()) {
+                    Some("text") => {
+                        if let Some(t) = block.get("text").and_then(|x| x.as_str()) { text.push_str(t); }
+                    }
+                    Some("tool_use") => {
+                        tool_uses.push(ToolUse {
+                            id:    block.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                            name:  block.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                            input: block.get("input").cloned().unwrap_or_else(|| json!({})),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(AgenticTurn {
+            text,
+            tool_uses,
+            assistant_msg: json!({ "role": "assistant", "content": content }),
+            input_tokens:  v.pointer("/usage/input_tokens").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+            output_tokens: v.pointer("/usage/output_tokens").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+        })
+    }
+
+    fn tool_results_turn(&self, outcomes: &[ToolOutcome<'_>]) -> Vec<serde_json::Value> {
+        // Anthropic: all tool_result blocks go in a single user turn.
+        let blocks: Vec<serde_json::Value> = outcomes.iter().map(|o| json!({
+            "type": "tool_result",
+            "tool_use_id": o.tu.id,
+            "content": o.content,
+            "is_error": o.is_error,
+        })).collect();
+        vec![json!({ "role": "user", "content": blocks })]
     }
 }

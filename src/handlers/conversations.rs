@@ -19,10 +19,10 @@ pub async fn list_conversations(
     let rows = sqlx::query_as::<_, Conversation>(
         r#"
         SELECT id, owner_id, agent_id, title, model_id, message_count, total_tokens,
-               is_pinned, is_archived, created_at, updated_at
+               is_pinned, is_archived, folder_id, position, created_at, updated_at
         FROM jarvis.conversations
         WHERE owner_id = $1 AND is_archived = false AND is_trashed = false
-        ORDER BY is_pinned DESC, updated_at DESC
+        ORDER BY is_pinned DESC, position ASC, updated_at DESC
         "#,
     )
     .bind(user.id)
@@ -51,7 +51,7 @@ pub async fn get_conversation(
 ) -> JarvisResult<Json<Conversation>> {
     let conv = sqlx::query_as::<_, Conversation>(
         r#"SELECT id, owner_id, agent_id, title, model_id, message_count, total_tokens,
-                  is_pinned, is_archived, created_at, updated_at
+                  is_pinned, is_archived, folder_id, position, created_at, updated_at
            FROM jarvis.conversations WHERE id = $1 AND owner_id = $2"#,
     )
     .bind(id)
@@ -92,7 +92,7 @@ pub async fn create_conversation(
         r#"INSERT INTO jarvis.conversations (owner_id, agent_id, title, model_id, provider)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING id, owner_id, agent_id, title, model_id, message_count, total_tokens,
-                     is_pinned, is_archived, created_at, updated_at"#,
+                     is_pinned, is_archived, folder_id, position, created_at, updated_at"#,
     )
     .bind(user.id)
     .bind(agent_id)
@@ -111,15 +111,23 @@ pub async fn update_conversation(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateConversationDto>,
 ) -> JarvisResult<Json<Conversation>> {
+    // folder_id : Option<Option<Uuid>> → (mettre à jour ?, valeur). `$8` IS NULL
+    // dans la garde quand on ne touche pas au dossier.
+    let (set_folder, folder_val) = match dto.folder_id { Some(v) => (true, v), None => (false, None) };
     let conv = sqlx::query_as::<_, Conversation>(
         r#"UPDATE jarvis.conversations SET
                title       = COALESCE($3, title),
                is_pinned   = COALESCE($4, is_pinned),
                is_archived = COALESCE($5, is_archived),
-               model_id    = COALESCE($6, model_id)
+               model_id    = COALESCE($6, model_id),
+               folder_id   = CASE WHEN $8 THEN $7 ELSE folder_id END,
+               position    = COALESCE($9, position)
            WHERE id = $1 AND owner_id = $2
+             -- N'autorise que les dossiers de l'utilisateur (ou la sortie de dossier).
+             AND (NOT $8 OR $7 IS NULL OR EXISTS (
+                   SELECT 1 FROM jarvis.folders f WHERE f.id = $7 AND f.owner_id = $2))
            RETURNING id, owner_id, agent_id, title, model_id, message_count, total_tokens,
-                     is_pinned, is_archived, created_at, updated_at"#,
+                     is_pinned, is_archived, folder_id, position, created_at, updated_at"#,
     )
     .bind(id)
     .bind(user.id)
@@ -127,6 +135,9 @@ pub async fn update_conversation(
     .bind(dto.is_pinned)
     .bind(dto.is_archived)
     .bind(dto.model.as_deref())
+    .bind(folder_val)
+    .bind(set_folder)
+    .bind(dto.position)
     .fetch_optional(&st.db)
     .await?
     .ok_or_else(|| JarvisError::NotFound("conversation introuvable".into()))?;
@@ -173,7 +184,7 @@ pub async fn list_messages(
     }
 
     let messages = sqlx::query_as::<_, Message>(
-        r#"SELECT id, conversation_id, role, content, prompt_tokens, completion_tokens, created_at
+        r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
            FROM jarvis.messages
            WHERE conversation_id = $1
            ORDER BY created_at ASC"#,
