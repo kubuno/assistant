@@ -1,7 +1,7 @@
 [module]
 id           = "jarvis"
 display_name = "Jarvis"
-version      = "0.1.0"
+version      = "0.1.2"
 description  = "Assistant IA self-hosted — Ollama local, multi-modèles, agents personnalisés."
 author       = "Kubuno Contributors"
 license      = "AGPL-3.0"

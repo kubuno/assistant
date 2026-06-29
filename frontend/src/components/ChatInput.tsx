@@ -1,66 +1,8 @@
 import { useRef, useEffect, useState, KeyboardEvent } from 'react'
-import { Plus, Square, Mic, ChevronDown, Check } from 'lucide-react'
-import { createPortal } from 'react-dom'
+import { Plus, Square, Mic, ImagePlus, X, ChevronDown } from 'lucide-react'
+import { useVoiceDictation } from '@kubuno/sdk'
+import { MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
 import { useJarvisStore } from '../jarvisStore'
-
-// ── Model selector dropdown ───────────────────────────────────────────────────
-
-function ModelDropdown({ anchorEl, onClose }: {
-  anchorEl: HTMLElement | null
-  onClose:  () => void
-}) {
-  const { models, selectedModel, setSelectedModel } = useJarvisStore()
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (anchorEl && !anchorEl.contains(e.target as Node)) onClose()
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [anchorEl, onClose])
-
-  if (!anchorEl) return null
-
-  const rect = anchorEl.getBoundingClientRect()
-  const top  = rect.bottom + 6
-  const left = Math.max(8, rect.left)
-
-  return createPortal(
-    <div
-      className="fixed bg-white border border-border rounded-2xl shadow-xl z-50 min-w-[240px] overflow-hidden py-1"
-      style={{ top, left }}
-    >
-      {models.map(m => (
-        <button
-          key={m.id}
-          onClick={() => { setSelectedModel(m.id); onClose() }}
-          className="w-full text-left px-4 py-3 hover:bg-surface-1 transition-colors flex items-start gap-3"
-        >
-          <div className="mt-0.5 w-4 h-4 flex-shrink-0 flex items-center justify-center">
-            {m.id === selectedModel && <Check size={14} className="text-primary" />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-text-primary">{m.name}</span>
-              {m.is_default && (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                  Par défaut
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-text-secondary mt-0.5 truncate">{m.provider}</p>
-          </div>
-        </button>
-      ))}
-      {!models.length && (
-        <div className="px-4 py-3 text-sm text-text-secondary">
-          Aucun modèle configuré
-        </div>
-      )}
-    </div>,
-    document.body
-  )
-}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -72,17 +14,48 @@ interface Props {
 
 export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
   const [value, setValue]           = useState('')
-  const [modelOpen, setModelOpen]   = useState(false)
   const textareaRef                 = useRef<HTMLTextAreaElement>(null)
-  const modelBtnRef                 = useRef<HTMLButtonElement>(null)
+  const fileInputRef                = useRef<HTMLInputElement>(null)
+  // Menus déroulants via le composant primaire @ui (portail + clamp viewport :
+  // plus de div flottant maison rognée par l'overflow de la carte).
+  const plusMenu  = useMenuDropdown()
+  const modelMenu = useMenuDropdown()
+  // Pièces jointes images (data URLs pour aperçu + envoi futur).
+  const [images, setImages]         = useState<{ id: string; name: string; url: string }[]>([])
 
   const {
     isStreaming, selectedModel, models,
-    addUserMessage, startStream, appendDelta, finalizeStream,
-    createConversation,
+    addUserMessage, streamChat, stopStream,
+    createConversation, setSelectedModel, setSelectedProvider,
   } = useJarvisStore()
 
-  const abortRef = useRef<AbortController | null>(null)
+  const plusItems: MenuItem[] = [
+    { type: 'action', label: 'Ajouter des images', icon: <ImagePlus size={16} />,
+      onClick: () => fileInputRef.current?.click() },
+  ]
+  const modelItems: MenuItem[] = models.length
+    ? models.map(m => ({
+        type: 'action' as const,
+        label: m.is_default ? `${m.name} · par défaut` : m.name,
+        shortcut: m.provider,
+        checked: m.id === selectedModel,
+        onClick: () => { setSelectedModel(m.id); setSelectedProvider(m.provider) },
+      }))
+    : [{ type: 'label' as const, text: 'Aucun modèle configuré' }]
+
+  // Ajout d'images : lecture en data URL pour l'aperçu (et l'envoi à venir).
+  const addImageFiles = (files: FileList | null) => {
+    if (!files) return
+    Array.from(files).filter(f => f.type.startsWith('image/')).forEach(f => {
+      const reader = new FileReader()
+      reader.onload = () => setImages(prev => [
+        ...prev,
+        { id: `${f.name}-${f.size}-${prev.length}-${f.lastModified}`, name: f.name, url: String(reader.result) },
+      ])
+      reader.readAsDataURL(f)
+    })
+  }
+  const removeImage = (id: string) => setImages(prev => prev.filter(i => i.id !== id))
 
   // Auto-resize textarea
   useEffect(() => {
@@ -92,12 +65,19 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
     ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
   }, [value])
 
-  const stop = () => abortRef.current?.abort()
+  // ── Saisie vocale (hook partagé du SDK : même toast éditable centré que la
+  //    barre de recherche du core, branché sur le backend STT auto-hébergé). La
+  //    dictée part du texte déjà saisi et le met à jour en direct. ──
+  // Validating the dictation (Enter / ✓ in the toast) sends the message directly.
+  const voice = useVoiceDictation({ getSeed: () => value, onText: setValue, onSubmit: (t) => submit(t) })
 
-  const submit = async () => {
-    const content = value.trim()
+  const stop = () => stopStream()
+
+  const submit = async (override?: string) => {
+    const content = (override ?? value).trim()
     if (!content || isStreaming) return
     setValue('')
+    setImages([])  // pièces jointes consommées
 
     // If no convId, create one first
     let targetConvId = convId
@@ -107,50 +87,7 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
     }
 
     addUserMessage(content)
-    startStream()
-
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-
-    try {
-      const token = (await import('@kubuno/sdk')).useAuthStore.getState().accessToken
-      const response = await fetch(`/api/v1/jarvis/conversations/${targetConvId}/chat`, {
-        method:  'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body:   JSON.stringify({ content, model: selectedModel ?? undefined }),
-        signal: ctrl.signal,
-      })
-
-      if (!response.ok || !response.body) {
-        useJarvisStore.getState().finalizeStream(crypto.randomUUID(), 0, 0)
-        return
-      }
-
-      const reader  = response.body.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value: chunk } = await reader.read()
-        if (done) break
-        const lines = decoder.decode(chunk).split('\n')
-        for (const line of lines) {
-          if (!line.startsWith('data:')) continue
-          const data = line.slice(5).trim()
-          if (data === '[DONE]') break
-          try {
-            const evt = JSON.parse(data)
-            if (evt.type === 'delta')      appendDelta(evt.content)
-            else if (evt.type === 'done')  finalizeStream(evt.message_id, evt.prompt_tokens, evt.completion_tokens)
-          } catch { /* ignore */ }
-        }
-      }
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name !== 'AbortError') console.error('SSE error', err)
-      useJarvisStore.getState().finalizeStream(crypto.randomUUID(), 0, 0)
-    }
+    await streamChat(targetConvId, { content })
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -168,14 +105,43 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
           className="flex flex-col bg-white border border-border rounded-3xl shadow-sm
                      focus-within:border-primary/50 focus-within:shadow-md transition-all overflow-hidden"
         >
+          {/* Aperçu des images jointes */}
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-4 pt-3">
+              {images.map(img => (
+                <div key={img.id} className="relative group/img">
+                  <img src={img.url} alt={img.name}
+                    className="w-16 h-16 object-cover rounded-xl border border-border" />
+                  <button
+                    onClick={() => removeImage(img.id)}
+                    title="Retirer"
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-text-primary/80 text-white
+                               flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Textarea row */}
           <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={e => { addImageFiles(e.target.files); e.target.value = '' }}
+            />
             <button
-              className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
-                         text-text-secondary hover:bg-surface-2 transition-colors"
-              title="Joindre un fichier"
+              onClick={plusMenu.open}
+              title="Ajouter du contenu"
+              className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors
+                         ${plusMenu.isOpen ? 'bg-surface-2 text-text-primary' : 'text-text-secondary hover:bg-surface-2'}`}
             >
-              <Plus size={18} />
+              <Plus size={18} className={`transition-transform ${plusMenu.isOpen ? 'rotate-45' : ''}`} />
             </button>
             <textarea
               id={inputId}
@@ -197,8 +163,7 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
             <div className="flex items-center gap-1">
               {/* Model selector */}
               <button
-                ref={modelBtnRef}
-                onClick={() => setModelOpen(o => !o)}
+                onClick={modelMenu.open}
                 className="flex items-center gap-1 text-xs font-medium text-text-secondary
                            hover:text-text-primary hover:bg-surface-2 rounded-full px-3 py-1.5 transition-colors"
               >
@@ -209,18 +174,25 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {/* Mic */}
-              <button
-                className="w-8 h-8 rounded-full flex items-center justify-center
-                           text-text-secondary hover:bg-surface-2 transition-colors"
-                title="Saisie vocale"
-              >
-                <Mic size={16} />
-              </button>
+              {/* Saisie vocale — toast éditable centré (hook partagé du SDK).
+                  Masquée si l'admin a désactivé la reconnaissance ou si le
+                  module STT est absent. */}
+              {voice.enabled && (
+                <button
+                  onClick={voice.toggleVoice}
+                  disabled={isStreaming}
+                  title={voice.listening ? 'Arrêter la dictée' : 'Saisie vocale'}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 ${
+                    (voice.listening || voice.voiceLoading) ? 'bg-danger/15 text-danger animate-pulse' : 'text-text-secondary hover:bg-surface-2'
+                  }`}
+                >
+                  <Mic size={17} />
+                </button>
+              )}
 
               {/* Send / Stop */}
               <button
-                onClick={isStreaming ? stop : submit}
+                onClick={isStreaming ? stop : () => submit()}
                 disabled={!isStreaming && !value.trim()}
                 className="w-9 h-9 rounded-full flex items-center justify-center transition-all
                            disabled:opacity-40 disabled:cursor-not-allowed
@@ -240,13 +212,12 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
         </p>
       </div>
 
-      {/* Model dropdown portal */}
-      {modelOpen && (
-        <ModelDropdown
-          anchorEl={modelBtnRef.current}
-          onClose={() => setModelOpen(false)}
-        />
-      )}
+      {/* Menus déroulants (composant primaire @ui, rendus en portail) */}
+      {plusMenu.isOpen  && plusMenu.pos  && <MenuDropdown items={plusItems}  pos={plusMenu.pos}  onClose={plusMenu.close} />}
+      {modelMenu.isOpen && modelMenu.pos && <MenuDropdown items={modelItems} pos={modelMenu.pos} onClose={modelMenu.close} minWidth={240} />}
+
+      {/* Toast vocal centré (partagé) */}
+      {voice.voiceToast}
     </div>
   )
 }

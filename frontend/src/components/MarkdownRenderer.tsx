@@ -2,16 +2,49 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import type { Components } from 'react-markdown'
+import { Copy, Check } from 'lucide-react'
+import { useState, type ReactNode, isValidElement } from 'react'
 import 'highlight.js/styles/github-dark.css'
 
 interface Props {
   content: string
 }
 
+// Extrait le texte brut d'un arbre de nœuds React (les blocs surlignés par
+// rehype-highlight contiennent des <span> imbriqués) — pour le bouton « Copier ».
+function nodeText(node: ReactNode): string {
+  if (node == null || node === false) return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(nodeText).join('')
+  if (isValidElement(node)) return nodeText((node.props as { children?: ReactNode }).children)
+  return ''
+}
+
+// Bloc de code : étiquette de langage + bouton « Copier » au survol.
+function CodeBlock({ children }: { children: ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const codeEl = isValidElement(children) ? (children.props as { className?: string; children?: ReactNode }) : null
+  const lang = codeEl?.className?.match(/language-([\w+-]+)/)?.[1]
+  const raw = nodeText(children).replace(/\n$/, '')
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(raw); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { /* ignore */ }
+  }
+  return (
+    <div className="my-3 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 h-7 bg-gray-800 text-[11px] text-gray-400 font-mono">
+        <span>{lang ?? 'code'}</span>
+        <button onClick={copy} className="flex items-center gap-1 hover:text-gray-100 transition-colors">
+          {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+          {copied ? 'Copié' : 'Copier'}
+        </button>
+      </div>
+      <pre className="bg-gray-900 p-4 overflow-x-auto text-sm">{children}</pre>
+    </div>
+  )
+}
+
 const components: Components = {
-  pre: ({ children }) => (
-    <pre className="bg-gray-900 rounded-lg p-4 overflow-x-auto text-sm my-3">{children}</pre>
-  ),
+  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   code: ({ children, className, ...props }) => {
     const isBlock = className?.startsWith('language-')
     return isBlock
@@ -34,6 +67,7 @@ export default function MarkdownRenderer({ content }: Props) {
         h1: ({ children }) => <h1 className="text-xl font-bold mb-3 mt-4">{children}</h1>,
         h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-4">{children}</h2>,
         h3: ({ children }) => <h3 className="font-semibold mb-2 mt-3">{children}</h3>,
+        a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:opacity-80">{children}</a>,
         blockquote: ({ children }) => (
           <blockquote className="border-l-4 border-primary pl-4 italic text-text-secondary my-3">
             {children}

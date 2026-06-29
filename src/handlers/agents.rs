@@ -17,7 +17,7 @@ pub async fn list_agents(
     user: JarvisUser,
 ) -> JarvisResult<Json<Vec<Agent>>> {
     let agents = sqlx::query_as::<_, Agent>(
-        r#"SELECT id, name, description, system_prompt, preferred_model, is_system, owner_id, created_at, updated_at
+        r#"SELECT id, name, description, system_prompt, preferred_model, avatar_emoji, avatar_color, prompt_suggestions, is_system, owner_id, created_at, updated_at
            FROM jarvis.agents WHERE is_system = true OR owner_id = $1 ORDER BY created_at"#,
     )
     .bind(user.id)
@@ -33,7 +33,7 @@ pub async fn get_agent(
     Path(id): Path<Uuid>,
 ) -> JarvisResult<Json<Agent>> {
     let agent = sqlx::query_as::<_, Agent>(
-        r#"SELECT id, name, description, system_prompt, preferred_model, is_system, owner_id, created_at, updated_at
+        r#"SELECT id, name, description, system_prompt, preferred_model, avatar_emoji, avatar_color, prompt_suggestions, is_system, owner_id, created_at, updated_at
            FROM jarvis.agents WHERE id = $1 AND (is_system = true OR owner_id = $2)"#,
     )
     .bind(id)
@@ -57,7 +57,7 @@ pub async fn create_agent(
     let agent = sqlx::query_as::<_, Agent>(
         r#"INSERT INTO jarvis.agents (name, description, system_prompt, preferred_model, owner_id)
            VALUES ($1, $2, $3, $4, $5)
-           RETURNING id, name, description, system_prompt, preferred_model, is_system, owner_id, created_at, updated_at"#,
+           RETURNING id, name, description, system_prompt, preferred_model, avatar_emoji, avatar_color, prompt_suggestions, is_system, owner_id, created_at, updated_at"#,
     )
     .bind(dto.name.trim())
     .bind(dto.description.as_deref())
@@ -96,7 +96,7 @@ pub async fn update_agent(
                system_prompt   = COALESCE($5, system_prompt),
                preferred_model = COALESCE($6, preferred_model)
            WHERE id = $1 AND owner_id = $2
-           RETURNING id, name, description, system_prompt, preferred_model, is_system, owner_id, created_at, updated_at"#,
+           RETURNING id, name, description, system_prompt, preferred_model, avatar_emoji, avatar_color, prompt_suggestions, is_system, owner_id, created_at, updated_at"#,
     )
     .bind(id)
     .bind(user.id)

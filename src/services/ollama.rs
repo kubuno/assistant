@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+use axum::async_trait;
+use serde_json::{json, Value};
+
+use super::agentic::{AgenticProvider, AgenticTurn, ToolOutcome, ToolUse};
+use super::mcp_client::ToolCatalogItem;
 use super::provider::{LlmMessage, StreamChunk as CommonChunk};
 
 #[derive(Debug, Clone)]
@@ -52,6 +57,13 @@ struct ModelsResponse {
     models: Vec<ModelInfo>,
 }
 
+/// Faux pour les modèles Ollama d'embedding (inutilisables en chat).
+pub fn is_ollama_chat_model(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    const EXCLUDE: &[&str] = &["embed", "minilm", "bge-", "arctic-embed"];
+    !EXCLUDE.iter().any(|k| n.contains(k))
+}
+
 /// Ollama-specific chunk (kept for internal use).
 pub struct StreamChunk {
     pub delta:             Option<String>,
@@ -86,7 +98,9 @@ impl OllamaService {
             .json()
             .await
             .context("parse liste modèles")?;
-        Ok(resp.models.into_iter().map(|m| m.name).collect())
+        // Exclut les modèles d'embedding (non utilisables en chat) : nomic-embed-text,
+        // mxbai-embed-large, all-minilm, bge-*, snowflake-arctic-embed…
+        Ok(resp.models.into_iter().map(|m| m.name).filter(|n| is_ollama_chat_model(n)).collect())
     }
 
     /// Same as `chat_stream` but accepts the unified `LlmMessage` type.
@@ -178,5 +192,90 @@ impl OllamaService {
         });
 
         Ok(rx)
+    }
+}
+
+#[async_trait]
+impl AgenticProvider for OllamaService {
+    fn tool_schema(&self, t: &ToolCatalogItem) -> Value {
+        // Ollama follows the OpenAI function-tool shape.
+        json!({
+            "type": "function",
+            "function": {
+                "name":        t.name,
+                "description": t.description,
+                "parameters":  t.input_schema,
+            }
+        })
+    }
+
+    async fn complete_once(
+        &self,
+        model: &str,
+        system: &str,
+        messages: &[Value],
+        tools: &[Value],
+    ) -> Result<AgenticTurn> {
+        // Ollama has no dedicated system field — prepend a system message.
+        let mut msgs: Vec<Value> = Vec::with_capacity(messages.len() + 1);
+        if !system.is_empty() {
+            msgs.push(json!({ "role": "system", "content": system }));
+        }
+        msgs.extend_from_slice(messages);
+
+        let mut body = json!({
+            "model":    model,
+            "messages": msgs,
+            "stream":   false,
+        });
+        if !tools.is_empty() { body["tools"] = json!(tools); }
+
+        let resp = self.client
+            .post(format!("{}/api/chat", self.base_url))
+            .json(&body)
+            .send().await
+            .context("connexion Ollama")?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text   = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Ollama {status}: {text}");
+        }
+
+        let v: Value = resp.json().await.context("réponse Ollama invalide")?;
+        let message = v.get("message").cloned().unwrap_or_else(|| json!({}));
+        let text = message.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+
+        let mut tool_uses = Vec::new();
+        if let Some(calls) = message.get("tool_calls").and_then(|c| c.as_array()) {
+            for (i, call) in calls.iter().enumerate() {
+                let func = call.get("function").cloned().unwrap_or_else(|| json!({}));
+                let name = func.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                if name.is_empty() { continue; }
+                // Ollama returns arguments as an object (occasionally a string).
+                let input = match func.get("arguments") {
+                    Some(Value::String(s)) => serde_json::from_str::<Value>(s).unwrap_or_else(|_| json!({})),
+                    Some(other)            => other.clone(),
+                    None                   => json!({}),
+                };
+                tool_uses.push(ToolUse { id: format!("call_{i}"), name, input });
+            }
+        }
+
+        Ok(AgenticTurn {
+            text,
+            tool_uses,
+            assistant_msg: message,
+            input_tokens:  v.get("prompt_eval_count").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+            output_tokens: v.get("eval_count").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+        })
+    }
+
+    fn tool_results_turn(&self, outcomes: &[ToolOutcome<'_>]) -> Vec<Value> {
+        // Ollama: one message with role "tool" per result.
+        outcomes.iter().map(|o| json!({
+            "role": "tool",
+            "tool_name": o.tu.name,
+            "content": o.content,
+        })).collect()
     }
 }

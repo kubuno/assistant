@@ -59,5 +59,14 @@ pub async fn list_models(
         }
     }
 
+    // Each provider flags its own default model; keep a single global default
+    // (the first one encountered) so the UI shows exactly one « Par défaut ».
+    let mut seen_default = false;
+    for m in infos.iter_mut() {
+        if m.is_default {
+            if seen_default { m.is_default = false; } else { seen_default = true; }
+        }
+    }
+
     Ok(Json(infos))
 }
