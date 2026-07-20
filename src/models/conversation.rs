@@ -25,6 +25,9 @@ pub struct Conversation {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateConversationDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     pub title:    Option<String>,
     pub agent_id: Option<Uuid>,
     pub model:    Option<String>,

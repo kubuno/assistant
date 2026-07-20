@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod delta;
 pub mod conversations;
 pub mod folders;
 pub mod messages;

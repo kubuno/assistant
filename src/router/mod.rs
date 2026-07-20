@@ -5,7 +5,7 @@ use axum::{
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::{
-    handlers::{agents, conversations, folders, messages, models, settings, tools},
+    handlers::{agents, conversations, delta, folders, messages, models, settings, tools},
     state::AppState,
 };
 
@@ -22,6 +22,10 @@ pub fn build(state: AppState) -> Router {
         // Dossiers (organisation des conversations)
         .route("/folders",     get(folders::list_folders).post(folders::create_folder))
         .route("/folders/:id", axum::routing::patch(folders::update_folder).delete(folders::delete_folder))
+        // Sync deltas (local-first) — MUST precede the /:id catch-alls.
+        .route("/conversations/delta", get(delta::conversations_delta))
+        .route("/folders/delta",       get(delta::folders_delta))
+        .route("/agents/delta",        get(delta::agents_delta))
         // Conversations
         .route("/conversations",     get(conversations::list_conversations).post(conversations::create_conversation))
         .route("/conversations/:id", get(conversations::get_conversation).patch(conversations::update_conversation).delete(conversations::delete_conversation))

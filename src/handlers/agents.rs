@@ -55,8 +55,8 @@ pub async fn create_agent(
     }
 
     let agent = sqlx::query_as::<_, Agent>(
-        r#"INSERT INTO jarvis.agents (name, description, system_prompt, preferred_model, owner_id)
-           VALUES ($1, $2, $3, $4, $5)
+        r#"INSERT INTO jarvis.agents (id, name, description, system_prompt, preferred_model, owner_id)
+           VALUES (COALESCE($6, uuid_generate_v4()), $1, $2, $3, $4, $5)
            RETURNING id, name, description, system_prompt, preferred_model, avatar_emoji, avatar_color, prompt_suggestions, is_system, owner_id, created_at, updated_at"#,
     )
     .bind(dto.name.trim())
@@ -64,6 +64,7 @@ pub async fn create_agent(
     .bind(&dto.system_prompt)
     .bind(dto.default_model.as_deref())
     .bind(user.id)
+    .bind(dto.id)
     .fetch_one(&st.db)
     .await?;
 
