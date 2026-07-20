@@ -69,7 +69,7 @@ export default function MarkdownRenderer({ content }: Props) {
         h3: ({ children }) => <h3 className="font-semibold mb-2 mt-3">{children}</h3>,
         a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:opacity-80">{children}</a>,
         blockquote: ({ children }) => (
-          <blockquote className="border-l-4 border-primary pl-4 italic text-text-secondary my-3">
+          <blockquote className="bg-surface-2 rounded-lg px-4 py-2 italic text-text-secondary my-3">
             {children}
           </blockquote>
         ),
