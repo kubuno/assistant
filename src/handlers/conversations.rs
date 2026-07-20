@@ -89,8 +89,8 @@ pub async fn create_conversation(
     let title = dto.title.as_deref().map(ToOwned::to_owned);
 
     let conv = sqlx::query_as::<_, Conversation>(
-        r#"INSERT INTO jarvis.conversations (owner_id, agent_id, title, model_id, provider)
-           VALUES ($1, $2, $3, $4, $5)
+        r#"INSERT INTO jarvis.conversations (id, owner_id, agent_id, title, model_id, provider)
+           VALUES (COALESCE($6, uuid_generate_v4()), $1, $2, $3, $4, $5)
            RETURNING id, owner_id, agent_id, title, model_id, message_count, total_tokens,
                      is_pinned, is_archived, folder_id, position, created_at, updated_at"#,
     )
@@ -99,6 +99,7 @@ pub async fn create_conversation(
     .bind(title)
     .bind(&model_id)
     .bind(&provider)
+    .bind(dto.id)
     .fetch_one(&st.db)
     .await?;
 

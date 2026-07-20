@@ -16,6 +16,9 @@ pub struct Folder {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateFolderDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     pub name:  String,
     pub color: Option<String>,
 }

@@ -43,12 +43,13 @@ pub async fn create_folder(
         .fetch_one(&st.db)
         .await?;
     let folder = sqlx::query_as::<_, Folder>(
-        &format!("INSERT INTO jarvis.folders (owner_id, name, color, position) VALUES ($1, $2, $3, $4) RETURNING {COLS}"),
+        &format!("INSERT INTO jarvis.folders (id, owner_id, name, color, position) VALUES (COALESCE($5, uuid_generate_v4()), $1, $2, $3, $4) RETURNING {COLS}"),
     )
     .bind(user.id)
     .bind(name)
     .bind(dto.color.as_deref())
     .bind(pos)
+    .bind(dto.id)
     .fetch_one(&st.db)
     .await?;
     Ok((StatusCode::CREATED, Json(folder)))
