@@ -48,7 +48,7 @@ fi
 EXTRA_REQUIRES=""; EXTRA_RECOMMENDS=""
 case "$MODULE" in
   media) EXTRA_REQUIRES="Requires:       ffmpeg" ;;
-  jarvis) EXTRA_RECOMMENDS="Recommends:     ollama" ;;
+  assistant) EXTRA_RECOMMENDS="Recommends:     ollama" ;;
 esac
 
 # ── Arbre de build ──────────────────────────────────────────────────────────

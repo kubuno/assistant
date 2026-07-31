@@ -10,7 +10,7 @@ export default function ThinkingIndicator() {
           />
         ))}
       </div>
-      <span className="text-sm">Jarvis réfléchit…</span>
+      <span className="text-sm">Assistant réfléchit…</span>
     </div>
   )
 }

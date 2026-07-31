@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Wrench, Check, AlertTriangle, Play, X, Loader2, MousePointerClick } from 'lucide-react'
-import { jarvisApi, JarvisToolCall } from '../api'
+import { assistantApi, AssistantToolCall } from '../api'
 
 // Human-readable one-line summary of the tool arguments.
 function argsSummary(args: Record<string, unknown>): string {
@@ -11,14 +11,14 @@ function argsSummary(args: Record<string, unknown>): string {
 
 /** Renders one assistant tool call: a backend result, a dispatched UI action,
  *  or a `confirm`-gated action awaiting the user's explicit approval. */
-export default function ToolCallCard({ call }: { call: JarvisToolCall }) {
+export default function ToolCallCard({ call }: { call: AssistantToolCall }) {
   const [phase, setPhase]   = useState<'idle' | 'running' | 'done' | 'cancelled'>('idle')
   const [result, setResult] = useState<{ text: string; error: boolean } | null>(null)
 
   const run = async () => {
     setPhase('running')
     try {
-      const r = await jarvisApi.callTool(call.tool, call.args)
+      const r = await assistantApi.callTool(call.tool, call.args)
       setResult({ text: r.result, error: r.is_error })
     } catch (e) {
       setResult({ text: e instanceof Error ? e.message : String(e), error: true })

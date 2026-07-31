@@ -6,19 +6,19 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    errors::{JarvisError, JarvisResult},
-    middleware::JarvisUser,
+    errors::{AssistantError, AssistantResult},
+    middleware::AssistantUser,
     models::{Agent, CreateAgentDto, UpdateAgentDto},
     state::AppState,
 };
 
 pub async fn list_agents(
     State(st): State<AppState>,
-    user: JarvisUser,
-) -> JarvisResult<Json<Vec<Agent>>> {
+    user: AssistantUser,
+) -> AssistantResult<Json<Vec<Agent>>> {
     let agents = sqlx::query_as::<_, Agent>(
         r#"SELECT id, name, description, system_prompt, preferred_model, avatar_emoji, avatar_color, prompt_suggestions, is_system, owner_id, created_at, updated_at
-           FROM jarvis.agents WHERE is_system = true OR owner_id = $1 ORDER BY created_at"#,
+           FROM assistant.agents WHERE is_system = true OR owner_id = $1 ORDER BY created_at"#,
     )
     .bind(user.id)
     .fetch_all(&st.db)
@@ -29,33 +29,33 @@ pub async fn list_agents(
 
 pub async fn get_agent(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
-) -> JarvisResult<Json<Agent>> {
+) -> AssistantResult<Json<Agent>> {
     let agent = sqlx::query_as::<_, Agent>(
         r#"SELECT id, name, description, system_prompt, preferred_model, avatar_emoji, avatar_color, prompt_suggestions, is_system, owner_id, created_at, updated_at
-           FROM jarvis.agents WHERE id = $1 AND (is_system = true OR owner_id = $2)"#,
+           FROM assistant.agents WHERE id = $1 AND (is_system = true OR owner_id = $2)"#,
     )
     .bind(id)
     .bind(user.id)
     .fetch_optional(&st.db)
     .await?
-    .ok_or_else(|| JarvisError::NotFound("agent introuvable".into()))?;
+    .ok_or_else(|| AssistantError::NotFound("agent introuvable".into()))?;
 
     Ok(Json(agent))
 }
 
 pub async fn create_agent(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Json(dto): Json<CreateAgentDto>,
-) -> JarvisResult<(StatusCode, Json<Agent>)> {
+) -> AssistantResult<(StatusCode, Json<Agent>)> {
     if dto.name.trim().is_empty() {
-        return Err(JarvisError::Validation("Le nom de l'agent est requis".into()));
+        return Err(AssistantError::Validation("Le nom de l'agent est requis".into()));
     }
 
     let agent = sqlx::query_as::<_, Agent>(
-        r#"INSERT INTO jarvis.agents (id, name, description, system_prompt, preferred_model, owner_id)
+        r#"INSERT INTO assistant.agents (id, name, description, system_prompt, preferred_model, owner_id)
            VALUES (COALESCE($6, uuid_generate_v4()), $1, $2, $3, $4, $5)
            RETURNING id, name, description, system_prompt, preferred_model, avatar_emoji, avatar_color, prompt_suggestions, is_system, owner_id, created_at, updated_at"#,
     )
@@ -73,25 +73,25 @@ pub async fn create_agent(
 
 pub async fn update_agent(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateAgentDto>,
-) -> JarvisResult<Json<Agent>> {
+) -> AssistantResult<Json<Agent>> {
     let is_system: Option<bool> = sqlx::query_scalar(
-        "SELECT is_system FROM jarvis.agents WHERE id = $1",
+        "SELECT is_system FROM assistant.agents WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&st.db)
     .await?;
 
     match is_system {
-        None        => return Err(JarvisError::NotFound("agent introuvable".into())),
-        Some(true)  => return Err(JarvisError::Forbidden),
+        None        => return Err(AssistantError::NotFound("agent introuvable".into())),
+        Some(true)  => return Err(AssistantError::Forbidden),
         Some(false) => {}
     }
 
     let agent = sqlx::query_as::<_, Agent>(
-        r#"UPDATE jarvis.agents SET
+        r#"UPDATE assistant.agents SET
                name            = COALESCE($3, name),
                description     = COALESCE($4, description),
                system_prompt   = COALESCE($5, system_prompt),
@@ -107,30 +107,30 @@ pub async fn update_agent(
     .bind(dto.default_model.as_deref())
     .fetch_optional(&st.db)
     .await?
-    .ok_or_else(|| JarvisError::NotFound("agent introuvable".into()))?;
+    .ok_or_else(|| AssistantError::NotFound("agent introuvable".into()))?;
 
     Ok(Json(agent))
 }
 
 pub async fn delete_agent(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
-) -> JarvisResult<StatusCode> {
+) -> AssistantResult<StatusCode> {
     let is_system: Option<bool> = sqlx::query_scalar(
-        "SELECT is_system FROM jarvis.agents WHERE id = $1",
+        "SELECT is_system FROM assistant.agents WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&st.db)
     .await?;
 
     match is_system {
-        None        => return Err(JarvisError::NotFound("agent introuvable".into())),
-        Some(true)  => return Err(JarvisError::Forbidden),
+        None        => return Err(AssistantError::NotFound("agent introuvable".into())),
+        Some(true)  => return Err(AssistantError::Forbidden),
         Some(false) => {}
     }
 
-    sqlx::query("DELETE FROM jarvis.agents WHERE id = $1 AND owner_id = $2")
+    sqlx::query("DELETE FROM assistant.agents WHERE id = $1 AND owner_id = $2")
         .bind(id)
         .bind(user.id)
         .execute(&st.db)

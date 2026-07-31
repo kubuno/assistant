@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useJarvisStore } from '../jarvisStore'
+import { useAssistantStore } from '../assistantStore'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 
@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function ConversationPage({ convId }: Props) {
-  const { fetchMessages } = useJarvisStore()
+  const { fetchMessages } = useAssistantStore()
 
   useEffect(() => {
     fetchMessages(convId)

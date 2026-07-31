@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { useAuthStore } from '@kubuno/sdk'
 import PromptSuggestions from './PromptSuggestions'
 import ChatInput from './ChatInput'
-import { useJarvisStore } from '../jarvisStore'
+import { useAssistantStore } from '../assistantStore'
 
 interface Props {
   onConvCreated: (convId: string) => void
@@ -13,7 +13,7 @@ export default function HomePage({ onConvCreated }: Props) {
   const user = useAuthStore(s => s.user)
   const firstName = user?.display_name?.split(' ')[0] ?? user?.username ?? 'là'
 
-  const { agents, selectedAgentId, setSelectedAgentId } = useJarvisStore()
+  const { agents, selectedAgentId, setSelectedAgentId } = useAssistantStore()
   const activeAgent = agents.find(a => a.id === selectedAgentId) ?? agents[0]
 
   // Sélectionne le 1ᵉʳ agent par défaut (persona des nouvelles conversations).
@@ -22,7 +22,7 @@ export default function HomePage({ onConvCreated }: Props) {
   }, [agents, selectedAgentId, setSelectedAgentId])
 
   const fillInput = (prompt: string) => {
-    const textarea = document.getElementById('jarvis-home-input') as HTMLTextAreaElement | null
+    const textarea = document.getElementById('assistant-home-input') as HTMLTextAreaElement | null
     if (!textarea) return
     const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
     setter?.call(textarea, prompt)
@@ -86,7 +86,7 @@ export default function HomePage({ onConvCreated }: Props) {
 
       {/* Input at bottom */}
       <div className="relative z-10 flex-shrink-0">
-        <ChatInput onConvCreated={onConvCreated} inputId="jarvis-home-input" />
+        <ChatInput onConvCreated={onConvCreated} inputId="assistant-home-input" />
       </div>
     </div>
   )

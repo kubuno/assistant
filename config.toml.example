@@ -1,7 +1,7 @@
-# ─── Kubuno Jarvis — Configuration ───────────────────────────────────────────
+# ─── Kubuno Assistant — Configuration ───────────────────────────────────────────
 # Copiez ce fichier en config.toml et adaptez les valeurs.
-# Les variables d'environnement préfixées KJ__ surchargent ce fichier.
-# Exemple : KJ__SERVER__PORT=3107
+# Les variables d'environnement préfixées KAS__ surchargent ce fichier.
+# Exemple : KAS__SERVER__PORT=3107
 
 [server]
 host = "127.0.0.1"

@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
-import { useJarvisStore } from './jarvisStore'
+import { useAssistantStore } from './assistantStore'
 import ConversationPage from './components/ConversationPage'
 import HomePage from './components/HomePage'
 
-export default function JarvisPage() {
-  const { activeConvId, setActiveConv, fetchConversations, fetchAgents, fetchModels, fetchFolders } = useJarvisStore()
+export default function AssistantPage() {
+  const { activeConvId, setActiveConv, fetchConversations, fetchAgents, fetchModels, fetchFolders } = useAssistantStore()
 
   useEffect(() => {
     fetchConversations()

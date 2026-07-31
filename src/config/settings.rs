@@ -187,9 +187,9 @@ impl Settings {
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
             .add_source(File::with_name("config").required(false))
-            .add_source(File::with_name("/etc/kubuno/modules/jarvis/config").required(false))
+            .add_source(File::with_name("/etc/kubuno/modules/assistant/config").required(false))
             .add_source(
-                Environment::with_prefix("KJ")
+                Environment::with_prefix("KAS")
                     .separator("__")
                     .try_parsing(true),
             );

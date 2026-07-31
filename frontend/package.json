@@ -1,5 +1,5 @@
 {
-  "name": "@kubuno-modules/jarvis-frontend",
+  "name": "@kubuno-modules/assistant-frontend",
   "version": "0.1.4",
   "private": true,
   "type": "module",

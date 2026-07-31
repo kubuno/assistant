@@ -5,7 +5,7 @@
 use axum::{extract::State, Json};
 use serde::Deserialize;
 
-use crate::{errors::JarvisResult, middleware::JarvisUser, services::McpClient, state::AppState};
+use crate::{errors::AssistantResult, middleware::AssistantUser, services::McpClient, state::AppState};
 
 #[derive(Deserialize)]
 pub struct CallToolDto {
@@ -13,13 +13,13 @@ pub struct CallToolDto {
     pub arguments: serde_json::Value,
 }
 
-/// POST /jarvis/tools/call — execute `{ tool, arguments }` via the core MCP
+/// POST /assistant/tools/call — execute `{ tool, arguments }` via the core MCP
 /// gateway with the caller's identity. Returns `{ result, is_error }`.
 pub async fn call_tool(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Json(dto): Json<CallToolDto>,
-) -> JarvisResult<Json<serde_json::Value>> {
+) -> AssistantResult<Json<serde_json::Value>> {
     let mcp = McpClient::new(&st.settings.core.url, &st.settings.core.internal_secret);
     let (text, is_error) = mcp.call_tool(user.id, &dto.tool, &dto.arguments).await?;
     Ok(Json(serde_json::json!({ "result": text, "is_error": is_error })))

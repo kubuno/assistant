@@ -6,8 +6,8 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    errors::{JarvisError, JarvisResult},
-    middleware::JarvisUser,
+    errors::{AssistantError, AssistantResult},
+    middleware::AssistantUser,
     models::{CreateFolderDto, Folder, UpdateFolderDto},
     state::AppState,
 };
@@ -16,11 +16,11 @@ const COLS: &str = "id, owner_id, name, color, position, created_at, updated_at"
 
 pub async fn list_folders(
     State(st): State<AppState>,
-    user: JarvisUser,
-) -> JarvisResult<Json<Vec<Folder>>> {
+    user: AssistantUser,
+) -> AssistantResult<Json<Vec<Folder>>> {
     let folders = sqlx::query_as::<_, Folder>(
         "SELECT id, owner_id, name, color, position, created_at, updated_at
-         FROM jarvis.folders WHERE owner_id = $1 ORDER BY position, created_at",
+         FROM assistant.folders WHERE owner_id = $1 ORDER BY position, created_at",
     )
     .bind(user.id)
     .fetch_all(&st.db)
@@ -30,20 +30,20 @@ pub async fn list_folders(
 
 pub async fn create_folder(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Json(dto): Json<CreateFolderDto>,
-) -> JarvisResult<(StatusCode, Json<Folder>)> {
+) -> AssistantResult<(StatusCode, Json<Folder>)> {
     let name = dto.name.trim();
     if name.is_empty() {
-        return Err(JarvisError::Validation("Le nom du dossier est requis".into()));
+        return Err(AssistantError::Validation("Le nom du dossier est requis".into()));
     }
     // Position = à la fin.
-    let pos: i32 = sqlx::query_scalar("SELECT COALESCE(MAX(position) + 1, 0) FROM jarvis.folders WHERE owner_id = $1")
+    let pos: i32 = sqlx::query_scalar("SELECT COALESCE(MAX(position) + 1, 0) FROM assistant.folders WHERE owner_id = $1")
         .bind(user.id)
         .fetch_one(&st.db)
         .await?;
     let folder = sqlx::query_as::<_, Folder>(
-        &format!("INSERT INTO jarvis.folders (id, owner_id, name, color, position) VALUES (COALESCE($5, uuid_generate_v4()), $1, $2, $3, $4) RETURNING {COLS}"),
+        &format!("INSERT INTO assistant.folders (id, owner_id, name, color, position) VALUES (COALESCE($5, uuid_generate_v4()), $1, $2, $3, $4) RETURNING {COLS}"),
     )
     .bind(user.id)
     .bind(name)
@@ -57,13 +57,13 @@ pub async fn create_folder(
 
 pub async fn update_folder(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateFolderDto>,
-) -> JarvisResult<Json<Folder>> {
+) -> AssistantResult<Json<Folder>> {
     let folder = sqlx::query_as::<_, Folder>(
         &format!(
-            r#"UPDATE jarvis.folders SET
+            r#"UPDATE assistant.folders SET
                    name     = COALESCE($3, name),
                    color    = COALESCE($4, color),
                    position = COALESCE($5, position),
@@ -79,24 +79,24 @@ pub async fn update_folder(
     .bind(dto.position)
     .fetch_optional(&st.db)
     .await?
-    .ok_or_else(|| JarvisError::NotFound("dossier introuvable".into()))?;
+    .ok_or_else(|| AssistantError::NotFound("dossier introuvable".into()))?;
     Ok(Json(folder))
 }
 
 pub async fn delete_folder(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
-) -> JarvisResult<StatusCode> {
+) -> AssistantResult<StatusCode> {
     // ON DELETE SET NULL détache les conversations (elles ne sont pas supprimées).
-    let affected = sqlx::query("DELETE FROM jarvis.folders WHERE id = $1 AND owner_id = $2")
+    let affected = sqlx::query("DELETE FROM assistant.folders WHERE id = $1 AND owner_id = $2")
         .bind(id)
         .bind(user.id)
         .execute(&st.db)
         .await?
         .rows_affected();
     if affected == 0 {
-        return Err(JarvisError::NotFound("dossier introuvable".into()));
+        return Err(AssistantError::NotFound("dossier introuvable".into()));
     }
     Ok(StatusCode::NO_CONTENT)
 }

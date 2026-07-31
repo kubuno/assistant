@@ -1,39 +1,39 @@
-/** Bundle MODULE jarvis — chargé à l'exécution (cf. vite.module.config). */
+/** Bundle MODULE assistant — chargé à l'exécution (cf. vite.module.config). */
 import { lazy } from 'react'
 import { RouteRegistry, WaffleAppRegistry, ModuleSettingsRegistry, useSidebarStore, useToolbarStore, SDK_VERSION } from '@kubuno/sdk'
 import { Bot } from 'lucide-react'
 import './index.css'
 import './i18n'
-import JarvisSidebarBody from './components/JarvisSidebarBody'
+import AssistantSidebarBody from './components/AssistantSidebarBody'
 
 export const sdkVersion = SDK_VERSION
 
 export function register() {
-  WaffleAppRegistry.register('jarvis', 'Jarvis', [
-    { id: 'jarvis', label: 'Jarvis', Icon: Bot, path: '/jarvis' },
+  WaffleAppRegistry.register('assistant', 'Assistant', [
+    { id: 'assistant', label: 'Assistant', Icon: Bot, path: '/assistant' },
   ])
 
-  // The header gear button opens the per-user Jarvis settings while in /jarvis.
-  ModuleSettingsRegistry.register('jarvis')
+  // The header gear button opens the per-user Assistant settings while in /assistant.
+  ModuleSettingsRegistry.register('assistant')
 
   useToolbarStore.getState().register({
-    moduleId:    'jarvis',
-    routePrefix: '/jarvis',
+    moduleId:    'assistant',
+    routePrefix: '/assistant',
     noPadding:   true,
   })
 
   useSidebarStore.getState().register({
-    moduleId:    'jarvis',
-    routePrefix: '/jarvis',
-    SidebarBody: JarvisSidebarBody,
+    moduleId:    'assistant',
+    routePrefix: '/assistant',
+    SidebarBody: AssistantSidebarBody,
     collapsedBody: true,
   })
 
   // Routes
-  const JarvisPage         = lazy(() => import('./JarvisPage'))
-  const JarvisSettingsPage = lazy(() => import('./JarvisSettingsPage'))
+  const AssistantPage         = lazy(() => import('./AssistantPage'))
+  const AssistantSettingsPage = lazy(() => import('./AssistantSettingsPage'))
 
-  RouteRegistry.register('jarvis',           JarvisPage)
-  RouteRegistry.register('jarvis/settings',  JarvisSettingsPage)
-  RouteRegistry.register('jarvis/:convId',   JarvisPage)
+  RouteRegistry.register('assistant',           AssistantPage)
+  RouteRegistry.register('assistant/settings',  AssistantSettingsPage)
+  RouteRegistry.register('assistant/:convId',   AssistantPage)
 }

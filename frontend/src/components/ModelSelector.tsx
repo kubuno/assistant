@@ -1,9 +1,9 @@
 import { ChevronDown } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
-import { useJarvisStore } from '../jarvisStore'
+import { useAssistantStore } from '../assistantStore'
 
 export default function ModelSelector() {
-  const { models, selectedModel, setSelectedModel } = useJarvisStore()
+  const { models, selectedModel, setSelectedModel } = useAssistantStore()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 

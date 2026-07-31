@@ -22,7 +22,7 @@ jobs:
       - name: cargo build
         env:
           SQLX_OFFLINE: "true"   # requêtes runtime : pas de DB requise (cache .sqlx si présent)
-        run: cargo build --release --bin kubuno-jarvis
+        run: cargo build --release --bin kubuno-assistant
 
       # ── Frontend (bundle du module) ──
       - uses: actions/setup-node@v4
@@ -39,7 +39,7 @@ jobs:
         run: bash build_deb.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: kubuno-jarvis-deb
+          name: kubuno-assistant-deb
           path: dist/*.deb
 
       # ── Release (sur tag) ──

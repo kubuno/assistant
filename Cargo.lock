@@ -1339,7 +1339,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kubuno-jarvis"
+name = "kubuno-assistant"
 version = "0.1.4"
 dependencies = [
  "anyhow",

@@ -93,7 +93,7 @@ pub fn run_agentic(
             .collect();
         // Tools requiring explicit user confirmation are NOT auto-executed: the
         // loop emits a `confirm` card and the client runs them after consent
-        // (POST /jarvis/tools/call). Avoids acting before the user agrees.
+        // (POST /assistant/tools/call). Avoids acting before the user agrees.
         let confirm_set: std::collections::HashSet<String> = tools.iter()
             .filter(|t| t.needs_confirm())
             .map(|t| t.name.clone())

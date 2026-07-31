@@ -7,13 +7,15 @@ import {
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@kubuno/sdk'
-import { jarvisApi, type JarvisAgent, type ProviderConfig, type UpdateProviderDto } from './api'
-import { Toggle, Button, Input, Textarea, Radio } from '@ui'
+import { assistantApi, type AssistantAgent, type ProviderConfig, type UpdateProviderDto } from './api'
+import { Toggle, Button, Input, Textarea, Radio, useSaveShortcut} from '@ui'
 import { useModulePrefs } from './userPrefs'
 
 // ── Per-user preferences (backend, cross-device via core users.preferences) ─────
 
-interface JarvisPrefs {
+// `type`, not `interface`: only a type alias gets the implicit index signature
+// that `useModulePrefs<T extends Record<string, unknown>>` requires.
+type AssistantPrefs = {
   responseStyle:  string   // 'concise' | 'balanced' | 'detailed'
   sendOnEnter:    boolean  // Enter sends (Shift+Enter = newline) vs the inverse
   streaming:      boolean  // stream the answer token by token
@@ -22,7 +24,7 @@ interface JarvisPrefs {
   bubbleTheme:    string   // 'default' | 'compact' | 'comfortable'
 }
 
-const DEFAULT_PREFS: JarvisPrefs = {
+const DEFAULT_PREFS: AssistantPrefs = {
   responseStyle: 'balanced', sendOnEnter: true, streaming: true,
   showTimestamps: false, showTokens: true, bubbleTheme: 'default',
 }
@@ -58,14 +60,17 @@ function RadioGroup({ options, value, onChange }: {
 // ── Préférences tab (per-user) ──────────────────────────────────────────────────
 
 function PreferencesTab() {
-  const { t } = useTranslation('jarvis')
-  const { prefs: saved, update } = useModulePrefs<JarvisPrefs>('jarvis', DEFAULT_PREFS)
-  const [prefs, setPrefs] = useState<JarvisPrefs>(saved)
+  const { t } = useTranslation('assistant')
+  const { prefs: saved, update } = useModulePrefs<AssistantPrefs>('assistant', DEFAULT_PREFS)
+  const [prefs, setPrefs] = useState<AssistantPrefs>(saved)
   const [savedFlag, setSavedFlag] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const set = <K extends keyof JarvisPrefs>(key: K, value: JarvisPrefs[K]) =>
+  const set = <K extends keyof AssistantPrefs>(key: K, value: AssistantPrefs[K]) =>
     setPrefs(p => ({ ...p, [key]: value }))
+
+  // Ctrl+S saves immediately (disabled while a save is in flight).
+  useSaveShortcut(() => { void save() }, !busy)
 
   const save = async () => {
     setBusy(true)
@@ -79,74 +84,74 @@ function PreferencesTab() {
   return (
     <div>
       <SettingsRow
-        label={t('jarvis_pref_style', { defaultValue: 'Style des réponses' })}
-        description={t('jarvis_pref_style_desc', { defaultValue: 'Longueur et niveau de détail attendus de l\'assistant.' })}
+        label={t('assistant_pref_style', { defaultValue: 'Style des réponses' })}
+        description={t('assistant_pref_style_desc', { defaultValue: 'Longueur et niveau de détail attendus de l\'assistant.' })}
       >
         <RadioGroup
           value={prefs.responseStyle}
           onChange={v => set('responseStyle', v)}
           options={[
-            { value: 'concise',  label: t('jarvis_pref_style_concise',  { defaultValue: 'Concis (réponses courtes)' }) },
-            { value: 'balanced', label: t('jarvis_pref_style_balanced', { defaultValue: 'Équilibré' }) },
-            { value: 'detailed', label: t('jarvis_pref_style_detailed', { defaultValue: 'Détaillé (explications complètes)' }) },
+            { value: 'concise',  label: t('assistant_pref_style_concise',  { defaultValue: 'Concis (réponses courtes)' }) },
+            { value: 'balanced', label: t('assistant_pref_style_balanced', { defaultValue: 'Équilibré' }) },
+            { value: 'detailed', label: t('assistant_pref_style_detailed', { defaultValue: 'Détaillé (explications complètes)' }) },
           ]}
         />
       </SettingsRow>
 
       <SettingsRow
-        label={t('jarvis_pref_bubble', { defaultValue: 'Densité de la conversation' })}
-        description={t('jarvis_pref_bubble_desc', { defaultValue: 'Espacement entre les messages.' })}
+        label={t('assistant_pref_bubble', { defaultValue: 'Densité de la conversation' })}
+        description={t('assistant_pref_bubble_desc', { defaultValue: 'Espacement entre les messages.' })}
       >
         <RadioGroup
           value={prefs.bubbleTheme}
           onChange={v => set('bubbleTheme', v)}
           options={[
-            { value: 'compact',     label: t('jarvis_pref_bubble_compact',     { defaultValue: 'Compacte' }) },
-            { value: 'default',     label: t('jarvis_pref_bubble_default',     { defaultValue: 'Normale' }) },
-            { value: 'comfortable', label: t('jarvis_pref_bubble_comfortable', { defaultValue: 'Confortable' }) },
+            { value: 'compact',     label: t('assistant_pref_bubble_compact',     { defaultValue: 'Compacte' }) },
+            { value: 'default',     label: t('assistant_pref_bubble_default',     { defaultValue: 'Normale' }) },
+            { value: 'comfortable', label: t('assistant_pref_bubble_comfortable', { defaultValue: 'Confortable' }) },
           ]}
         />
       </SettingsRow>
 
       <SettingsRow
-        label={t('jarvis_pref_send', { defaultValue: 'Envoi du message' })}
-        description={t('jarvis_pref_send_desc', { defaultValue: 'Touche Entrée pour envoyer ; Maj+Entrée insère un saut de ligne.' })}
+        label={t('assistant_pref_send', { defaultValue: 'Envoi du message' })}
+        description={t('assistant_pref_send_desc', { defaultValue: 'Touche Entrée pour envoyer ; Maj+Entrée insère un saut de ligne.' })}
       >
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <Toggle checked={prefs.sendOnEnter} onChange={() => set('sendOnEnter', !prefs.sendOnEnter)} />
-          <span className="text-sm text-text-primary">{t('jarvis_pref_send_on', { defaultValue: 'Envoyer avec la touche Entrée' })}</span>
+          <span className="text-sm text-text-primary">{t('assistant_pref_send_on', { defaultValue: 'Envoyer avec la touche Entrée' })}</span>
         </label>
       </SettingsRow>
 
       <SettingsRow
-        label={t('jarvis_pref_streaming', { defaultValue: 'Réponses en continu' })}
-        description={t('jarvis_pref_streaming_desc', { defaultValue: 'Afficher la réponse au fur et à mesure de sa génération.' })}
+        label={t('assistant_pref_streaming', { defaultValue: 'Réponses en continu' })}
+        description={t('assistant_pref_streaming_desc', { defaultValue: 'Afficher la réponse au fur et à mesure de sa génération.' })}
       >
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <Toggle checked={prefs.streaming} onChange={() => set('streaming', !prefs.streaming)} />
-          <span className="text-sm text-text-primary">{t('jarvis_pref_streaming_on', { defaultValue: 'Activer le streaming' })}</span>
+          <span className="text-sm text-text-primary">{t('assistant_pref_streaming_on', { defaultValue: 'Activer le streaming' })}</span>
         </label>
       </SettingsRow>
 
-      <SettingsRow label={t('jarvis_pref_timestamps', { defaultValue: 'Horodatage' })}>
+      <SettingsRow label={t('assistant_pref_timestamps', { defaultValue: 'Horodatage' })}>
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <Toggle checked={prefs.showTimestamps} onChange={() => set('showTimestamps', !prefs.showTimestamps)} />
-          <span className="text-sm text-text-primary">{t('jarvis_pref_timestamps_on', { defaultValue: 'Afficher l\'heure sous chaque message' })}</span>
+          <span className="text-sm text-text-primary">{t('assistant_pref_timestamps_on', { defaultValue: 'Afficher l\'heure sous chaque message' })}</span>
         </label>
       </SettingsRow>
 
-      <SettingsRow label={t('jarvis_pref_tokens', { defaultValue: 'Jetons (tokens)' })}>
+      <SettingsRow label={t('assistant_pref_tokens', { defaultValue: 'Jetons (tokens)' })}>
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <Toggle checked={prefs.showTokens} onChange={() => set('showTokens', !prefs.showTokens)} />
-          <span className="text-sm text-text-primary">{t('jarvis_pref_tokens_on', { defaultValue: 'Afficher l\'utilisation des jetons sous les réponses' })}</span>
+          <span className="text-sm text-text-primary">{t('assistant_pref_tokens_on', { defaultValue: 'Afficher l\'utilisation des jetons sous les réponses' })}</span>
         </label>
       </SettingsRow>
 
       <div className="pt-5 flex items-center gap-3">
         <Button onClick={save} loading={busy}>
           {savedFlag
-            ? <><Check size={14} className="mr-1.5 inline" />{t('jarvis_settings_saved', { defaultValue: 'Enregistré' })}</>
-            : t('jarvis_settings_save_changes', { defaultValue: 'Enregistrer les modifications' })}
+            ? <><Check size={14} className="mr-1.5 inline" />{t('assistant_settings_saved', { defaultValue: 'Enregistré' })}</>
+            : t('assistant_settings_save_changes', { defaultValue: 'Enregistrer les modifications' })}
         </Button>
         <Button variant="ghost" onClick={() => setPrefs(saved)}>
           {t('common_cancel', { defaultValue: 'Annuler' })}
@@ -166,7 +171,7 @@ const PROVIDER_META: Record<string, { name: string; colorClass: string; icon: st
 }
 
 function ProviderCard({ config, onUpdate }: { config: ProviderConfig; onUpdate: (p: string, d: UpdateProviderDto) => Promise<void> }) {
-  const { t } = useTranslation('jarvis')
+  const { t } = useTranslation('assistant')
   const [showKey,   setShowKey]   = useState(false)
   const [apiKey,    setApiKey]    = useState('')
   const [baseUrl,   setBaseUrl]   = useState(config.base_url)
@@ -188,7 +193,7 @@ function ProviderCard({ config, onUpdate }: { config: ProviderConfig; onUpdate: 
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch {
-      setErr(t('jarvis_save_error'))
+      setErr(t('assistant_save_error'))
     } finally {
       setSaving(false)
     }
@@ -212,13 +217,13 @@ function ProviderCard({ config, onUpdate }: { config: ProviderConfig; onUpdate: 
       <div className="space-y-3">
         {config.provider !== 'ollama' && (
           <div>
-            <label className="text-xs font-medium text-text-secondary block mb-1">{t('jarvis_api_key')}</label>
+            <label className="text-xs font-medium text-text-secondary block mb-1">{t('assistant_api_key')}</label>
             <div className="relative">
               <input
                 type={showKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={e => setApiKey(e.target.value)}
-                placeholder={config.api_key || t('jarvis_api_key_placeholder')}
+                placeholder={config.api_key || t('assistant_api_key_placeholder')}
                 className="w-full pr-9 pl-3 py-2 text-sm border border-border rounded-lg
                            bg-surface-1 focus:outline-none focus:border-primary"
               />
@@ -234,14 +239,14 @@ function ProviderCard({ config, onUpdate }: { config: ProviderConfig; onUpdate: 
         )}
 
         <Input
-          label={t('jarvis_base_url')}
+          label={t('assistant_base_url')}
           type="text"
           value={baseUrl}
           onChange={e => setBaseUrl(e.target.value)}
         />
 
         <Input
-          label={t('jarvis_default_model')}
+          label={t('assistant_default_model')}
           type="text"
           value={defModel}
           onChange={e => setDefModel(e.target.value)}
@@ -257,7 +262,7 @@ function ProviderCard({ config, onUpdate }: { config: ProviderConfig; onUpdate: 
       <div className="mt-4 flex justify-end">
         <Button onClick={save} disabled={saving}>
           {saved ? <CheckCircle size={14} /> : <Save size={14} />}
-          {saved ? t('jarvis_saved') : saving ? t('jarvis_saving') : t('common_save')}
+          {saved ? t('assistant_saved') : saving ? t('assistant_saving') : t('common_save')}
         </Button>
       </div>
     </div>
@@ -265,20 +270,20 @@ function ProviderCard({ config, onUpdate }: { config: ProviderConfig; onUpdate: 
 }
 
 function ProvidersTab() {
-  const { t } = useTranslation('jarvis')
+  const { t } = useTranslation('assistant')
   const [providers, setProviders] = useState<ProviderConfig[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
 
   useEffect(() => {
-    jarvisApi.listProviders()
+    assistantApi.listProviders()
       .then(setProviders)
-      .catch(() => setError(t('jarvis_providers_load_error')))
+      .catch(() => setError(t('assistant_providers_load_error')))
       .finally(() => setLoading(false))
   }, [t])
 
   async function handleUpdate(provider: string, dto: UpdateProviderDto) {
-    const updated = await jarvisApi.updateProvider(provider, dto)
+    const updated = await assistantApi.updateProvider(provider, dto)
     setProviders(prev => prev.map(p => p.provider === provider ? { ...p, ...updated } : p))
   }
 
@@ -292,7 +297,7 @@ function ProvidersTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        {t('jarvis_providers_help')}
+        {t('assistant_providers_help')}
       </p>
       <div className="grid gap-4">
         {providers.map(p => (
@@ -321,7 +326,7 @@ function AgentForm({
   onSave:   (d: AgentFormData) => Promise<void>
   onCancel: () => void
 }) {
-  const { t } = useTranslation('jarvis')
+  const { t } = useTranslation('assistant')
   const [name,         setName]         = useState(initial?.name          ?? '')
   const [description,  setDescription]  = useState(initial?.description   ?? '')
   const [systemPrompt, setSystemPrompt] = useState(initial?.system_prompt ?? '')
@@ -331,12 +336,12 @@ function AgentForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) { setErr(t('jarvis_name_required')); return }
+    if (!name.trim()) { setErr(t('assistant_name_required')); return }
     setSaving(true); setErr(null)
     try {
       await onSave({ name: name.trim(), description: description.trim(), system_prompt: systemPrompt, default_model: defModel.trim() })
     } catch {
-      setErr(t('jarvis_save_error'))
+      setErr(t('assistant_save_error'))
       setSaving(false)
     }
   }
@@ -345,35 +350,35 @@ function AgentForm({
     <form onSubmit={submit} className="border border-border rounded-xl p-5 bg-white space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <Input
-          label={t('jarvis_agent_name')}
+          label={t('assistant_agent_name')}
           autoFocus
           value={name}
           onChange={e => setName(e.target.value)}
-          placeholder={t('jarvis_agent_name_placeholder')}
+          placeholder={t('assistant_agent_name_placeholder')}
           maxLength={100}
         />
         <Input
-          label={t('jarvis_preferred_model')}
+          label={t('assistant_preferred_model')}
           value={defModel}
           onChange={e => setDefModel(e.target.value)}
-          placeholder={t('jarvis_preferred_model_placeholder')}
+          placeholder={t('assistant_preferred_model_placeholder')}
         />
       </div>
 
       <Input
-        label={t('jarvis_description')}
+        label={t('assistant_description')}
         value={description}
         onChange={e => setDescription(e.target.value)}
-        placeholder={t('jarvis_description_placeholder')}
+        placeholder={t('assistant_description_placeholder')}
         maxLength={255}
       />
 
       <Textarea
-        label={t('jarvis_system_prompt')}
+        label={t('assistant_system_prompt')}
         value={systemPrompt}
         onChange={e => setSystemPrompt(e.target.value)}
         rows={5}
-        placeholder={t('jarvis_system_prompt_placeholder')}
+        placeholder={t('assistant_system_prompt_placeholder')}
         className="h-auto min-h-0 resize-y"
       />
 
@@ -386,7 +391,7 @@ function AgentForm({
       <div className="flex gap-2 justify-end pt-1">
         <Button type="button" variant="ghost" onClick={onCancel}>{t('common_cancel')}</Button>
         <Button type="submit" icon={<Save size={14} />} disabled={!name.trim()} loading={saving}>
-          {saving ? t('jarvis_saving') : t('common_save')}
+          {saving ? t('assistant_saving') : t('common_save')}
         </Button>
       </div>
     </form>
@@ -394,8 +399,8 @@ function AgentForm({
 }
 
 function AgentsTab() {
-  const { t } = useTranslation('jarvis')
-  const [agents,   setAgents]   = useState<JarvisAgent[]>([])
+  const { t } = useTranslation('assistant')
+  const [agents,   setAgents]   = useState<AssistantAgent[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -403,20 +408,20 @@ function AgentsTab() {
   const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
-    jarvisApi.listAgents()
+    assistantApi.listAgents()
       .then(setAgents)
-      .catch(() => setError(t('jarvis_agents_load_error')))
+      .catch(() => setError(t('assistant_agents_load_error')))
       .finally(() => setLoading(false))
   }, [t])
 
   async function handleCreate(data: AgentFormData) {
-    const created = await jarvisApi.createAgent(data)
+    const created = await assistantApi.createAgent(data)
     setAgents(prev => [...prev, created])
     setCreating(false)
   }
 
   async function handleEdit(id: string, data: AgentFormData) {
-    const updated = await jarvisApi.updateAgent(id, data)
+    const updated = await assistantApi.updateAgent(id, data)
     setAgents(prev => prev.map(a => a.id === id ? updated : a))
     setEditing(null)
   }
@@ -424,7 +429,7 @@ function AgentsTab() {
   async function handleDelete(id: string) {
     setDeleting(id)
     try {
-      await jarvisApi.deleteAgent(id)
+      await assistantApi.deleteAgent(id)
       setAgents(prev => prev.filter(a => a.id !== id))
     } finally {
       setDeleting(null)
@@ -445,11 +450,11 @@ function AgentsTab() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="text-sm text-text-secondary">
-          {t('jarvis_agents_help')}
+          {t('assistant_agents_help')}
         </p>
         {!creating && (
           <Button size="sm" icon={<Plus size={14} />} onClick={() => setCreating(true)}>
-            {t('jarvis_new_agent')}
+            {t('assistant_new_agent')}
           </Button>
         )}
       </div>
@@ -465,8 +470,8 @@ function AgentsTab() {
       {userAgents.length === 0 && !creating ? (
         <div className="border border-dashed border-border rounded-xl p-8 text-center">
           <Bot size={32} className="mx-auto text-text-tertiary mb-2" />
-          <p className="text-sm text-text-secondary">{t('jarvis_no_custom_agents')}</p>
-          <p className="text-xs text-text-tertiary mt-1">{t('jarvis_no_custom_agents_hint')}</p>
+          <p className="text-sm text-text-secondary">{t('assistant_no_custom_agents')}</p>
+          <p className="text-xs text-text-tertiary mt-1">{t('assistant_no_custom_agents_hint')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -533,7 +538,7 @@ function AgentsTab() {
       {systemAgents.length > 0 && (
         <div>
           <p className="text-xs font-medium text-text-tertiary uppercase tracking-wide mb-2">
-            {t('jarvis_system_agents_title')}
+            {t('assistant_system_agents_title')}
           </p>
           <div className="space-y-2">
             {systemAgents.map(agent => (
@@ -544,7 +549,7 @@ function AgentsTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium text-text-primary">{agent.name}</p>
-                    <span className="text-xs bg-surface-3 text-text-tertiary px-1.5 py-0.5 rounded">{t('jarvis_system_badge')}</span>
+                    <span className="text-xs bg-surface-3 text-text-tertiary px-1.5 py-0.5 rounded">{t('assistant_system_badge')}</span>
                   </div>
                   {agent.description && (
                     <p className="text-xs text-text-secondary mt-0.5">{agent.description}</p>
@@ -562,7 +567,7 @@ function AgentsTab() {
 // ── About tab ───────────────────────────────────────────────────────────────────
 
 function AboutTab() {
-  const { t } = useTranslation('jarvis')
+  const { t } = useTranslation('assistant')
   return (
     <div className="rounded-xl border border-border overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-surface-1">
@@ -570,15 +575,15 @@ function AboutTab() {
           <Sparkles size={20} className="text-violet-600" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-text-primary">Kubuno Jarvis</p>
-          <p className="text-xs text-text-tertiary">v0.1.0 · {t('jarvis_official_module', { defaultValue: 'Module officiel' })}</p>
+          <p className="text-sm font-semibold text-text-primary">Kubuno Assistant</p>
+          <p className="text-xs text-text-tertiary">v0.1.0 · {t('assistant_official_module', { defaultValue: 'Module officiel' })}</p>
         </div>
         <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Rust</span>
       </div>
       <div className="px-5 py-4">
-        <a href="https://github.com/kubuno/jarvis" target="_blank" rel="noopener noreferrer"
+        <a href="https://github.com/kubuno/assistant" target="_blank" rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
-          <ExternalLink size={13} /> github.com/kubuno/jarvis
+          <ExternalLink size={13} /> github.com/kubuno/assistant
         </a>
       </div>
     </div>
@@ -589,17 +594,17 @@ function AboutTab() {
 
 type Tab = 'preferences' | 'agents' | 'providers' | 'about'
 
-export default function JarvisSettingsPage() {
-  const { t } = useTranslation('jarvis')
+export default function AssistantSettingsPage() {
+  const { t } = useTranslation('assistant')
   const isAdmin = useAuthStore(s => s.user?.role === 'admin')
   const [tab, setTab] = useState<Tab>('preferences')
 
   // The providers tab holds instance-wide secrets (API keys) → admin-only.
   const tabs: { id: Tab; label: string; adminOnly?: boolean }[] = [
-    { id: 'preferences', label: t('jarvis_tab_preferences', { defaultValue: 'Préférences' }) },
-    { id: 'agents',      label: t('jarvis_tab_agents', { defaultValue: 'Agents' }) },
-    { id: 'providers',   label: t('jarvis_tab_providers', { defaultValue: 'Fournisseurs' }), adminOnly: true },
-    { id: 'about',       label: t('jarvis_tab_about', { defaultValue: 'À propos' }) },
+    { id: 'preferences', label: t('assistant_tab_preferences', { defaultValue: 'Préférences' }) },
+    { id: 'agents',      label: t('assistant_tab_agents', { defaultValue: 'Agents' }) },
+    { id: 'providers',   label: t('assistant_tab_providers', { defaultValue: 'Fournisseurs' }), adminOnly: true },
+    { id: 'about',       label: t('assistant_tab_about', { defaultValue: 'À propos' }) },
   ]
   const visibleTabs = tabs.filter(tb => !tb.adminOnly || isAdmin)
 
@@ -607,14 +612,14 @@ export default function JarvisSettingsPage() {
     <div className="flex flex-col h-full bg-white overflow-hidden">
       {/* Breadcrumb header */}
       <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#e8eaed] flex-shrink-0" style={{ background: '#f8f9fa' }}>
-        <Link to="/jarvis" className="flex items-center gap-1.5 text-sm text-[#1a73e8] hover:underline">
+        <Link to="/assistant" className="flex items-center gap-1.5 text-sm text-[#1a73e8] hover:underline">
           <ArrowLeft size={14} />
-          Jarvis
+          Assistant
         </Link>
         <span className="text-text-tertiary text-sm">/</span>
         <div className="flex items-center gap-1.5">
           <Sparkles size={15} className="text-text-secondary" />
-          <span className="text-sm text-text-primary">{t('jarvis_settings_title', { defaultValue: 'Réglages' })}</span>
+          <span className="text-sm text-text-primary">{t('assistant_settings_title', { defaultValue: 'Réglages' })}</span>
         </div>
       </div>
 

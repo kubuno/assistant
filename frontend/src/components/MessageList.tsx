@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react'
-import { useJarvisStore } from '../jarvisStore'
+import { useAssistantStore } from '../assistantStore'
 import UserMessage from './UserMessage'
 import AssistantMessage from './AssistantMessage'
 import ThinkingIndicator from './ThinkingIndicator'
 
 export default function MessageList() {
-  const { messages, isStreaming, streamingText, streamingToolCalls } = useJarvisStore()
+  const { messages, isStreaming, streamingText, streamingToolCalls } = useAssistantStore()
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

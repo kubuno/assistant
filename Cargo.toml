@@ -1,13 +1,13 @@
 [package]
-name        = "kubuno-jarvis"
+name        = "kubuno-assistant"
 version     = "0.1.4"
 edition     = "2021"
-description = "Kubuno Jarvis — assistant IA multi-modèles (Ollama local, agents, RAG)"
+description = "Kubuno Assistant — assistant IA multi-modèles (Ollama local, agents, RAG)"
 license     = "AGPL-3.0"
-repository  = "https://github.com/kubuno/jarvis"
+repository  = "https://github.com/kubuno/assistant"
 
 [[bin]]
-name = "kubuno-jarvis"
+name = "kubuno-assistant"
 path = "src/main.rs"
 
 [dependencies]
