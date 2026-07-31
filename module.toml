@@ -1,7 +1,7 @@
 [module]
 id           = "assistant"
 display_name = "Assistant"
-version      = "0.1.4"
+version      = "0.1.5"
 description  = "Assistant IA self-hosted — Ollama local, multi-modèles, agents personnalisés."
 author       = "Kubuno Contributors"
 license      = "AGPL-3.0"

@@ -1,6 +1,6 @@
 [package]
 name        = "kubuno-assistant"
-version     = "0.1.4"
+version     = "0.1.5"
 edition     = "2021"
 description = "Kubuno Assistant — assistant IA multi-modèles (Ollama local, agents, RAG)"
 license     = "AGPL-3.0"
