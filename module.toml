@@ -1,6 +1,6 @@
 [module]
-id           = "jarvis"
-display_name = "Jarvis"
+id           = "assistant"
+display_name = "Assistant"
 version      = "0.1.4"
 description  = "Assistant IA self-hosted — Ollama local, multi-modèles, agents personnalisés."
 author       = "Kubuno Contributors"
@@ -8,10 +8,10 @@ license      = "AGPL-3.0"
 homepage_url = "https://github.com/kubuno/kubuno"
 runtime      = "rust"
 dependencies = []
-settings_path = "/jarvis/settings"
+settings_path = "/assistant/settings"
 
 [process]
-entrypoint = "kubuno-jarvis"
+entrypoint = "kubuno-assistant"
 args       = []
 
 [server]
@@ -24,10 +24,10 @@ patterns = [
 ]
 
 [[sidebar_items]]
-id       = "jarvis"
-label    = "Jarvis"
+id       = "assistant"
+label    = "Assistant"
 icon     = "Sparkles"
-path     = "/jarvis"
+path     = "/assistant"
 position = 50
 section  = "main"
 
@@ -37,20 +37,20 @@ publishes  = []
 
 [[cli_commands]]
 name        = "chat"
-description = "Démarrer une session de chat interactive avec Jarvis"
-usage       = "kubuno jarvis:chat [--model <modèle>] [--agent <nom>]"
+description = "Démarrer une session de chat interactive avec Assistant"
+usage       = "kubuno assistant:chat [--model <modèle>] [--agent <nom>]"
 
 [[cli_commands]]
 name        = "models"
 description = "Lister les modèles LLM disponibles"
-usage       = "kubuno jarvis:models"
+usage       = "kubuno assistant:models"
 
 [[cli_commands]]
 name        = "providers"
 description = "Afficher les fournisseurs LLM configurés"
-usage       = "kubuno jarvis:providers"
+usage       = "kubuno assistant:providers"
 
 [[cli_commands]]
 name        = "agents"
-description = "Lister les agents Jarvis disponibles"
-usage       = "kubuno jarvis:agents"
+description = "Lister les agents Assistant disponibles"
+usage       = "kubuno assistant:agents"

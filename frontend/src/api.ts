@@ -1,6 +1,6 @@
 import { api as apiClient } from '@kubuno/sdk'
 
-export interface JarvisConversation {
+export interface AssistantConversation {
   id:            string
   user_id:       string
   agent_id:      string | null
@@ -17,11 +17,11 @@ export interface JarvisConversation {
 }
 
 export interface ConversationSummary {
-  conversation: JarvisConversation
+  conversation: AssistantConversation
   last_message: string | null
 }
 
-export interface JarvisFolder {
+export interface AssistantFolder {
   id:         string
   owner_id:   string
   name:       string
@@ -32,7 +32,7 @@ export interface JarvisFolder {
 }
 
 /** One tool the assistant invoked (or a client UI action / pending confirmation). */
-export interface JarvisToolCall {
+export interface AssistantToolCall {
   tool:      string
   kind:      'backend' | 'ui' | 'confirm'
   args:      Record<string, unknown>
@@ -41,12 +41,12 @@ export interface JarvisToolCall {
   ui?:       { service: string; method: string }
 }
 
-export interface JarvisMessage {
+export interface AssistantMessage {
   id:              string
   conversation_id: string
   role:            'user' | 'assistant' | 'system'
   content:         string
-  tool_calls?:     JarvisToolCall[]
+  tool_calls?:     AssistantToolCall[]
   prompt_tokens:   number
   completion_tokens: number
   feedback?:       'like' | 'dislike' | null
@@ -55,7 +55,7 @@ export interface JarvisMessage {
 
 export interface AgentSuggestion { label: string; prompt: string; icon?: string }
 
-export interface JarvisAgent {
+export interface AssistantAgent {
   id:            string
   name:          string
   description:   string | null
@@ -92,69 +92,69 @@ export interface UpdateProviderDto {
   default_model?: string
 }
 
-export const jarvisApi = {
+export const assistantApi = {
   // Conversations
   listConversations: () =>
-    apiClient.get<ConversationSummary[]>('/jarvis/conversations').then(r => r.data),
+    apiClient.get<ConversationSummary[]>('/assistant/conversations').then(r => r.data),
 
   getConversation: (id: string) =>
-    apiClient.get<JarvisConversation>(`/jarvis/conversations/${id}`).then(r => r.data),
+    apiClient.get<AssistantConversation>(`/assistant/conversations/${id}`).then(r => r.data),
 
   createConversation: (data: { title?: string; agent_id?: string; model?: string; provider?: string }) =>
-    apiClient.post<JarvisConversation>('/jarvis/conversations', data).then(r => r.data),
+    apiClient.post<AssistantConversation>('/assistant/conversations', data).then(r => r.data),
 
   updateConversation: (id: string, data: { title?: string; is_pinned?: boolean; is_archived?: boolean; model?: string; folder_id?: string | null; position?: number }) =>
-    apiClient.patch<JarvisConversation>(`/jarvis/conversations/${id}`, data).then(r => r.data),
+    apiClient.patch<AssistantConversation>(`/assistant/conversations/${id}`, data).then(r => r.data),
 
   deleteConversation: (id: string) =>
-    apiClient.delete(`/jarvis/conversations/${id}`),
+    apiClient.delete(`/assistant/conversations/${id}`),
 
   // Dossiers (organisation des conversations)
   listFolders: () =>
-    apiClient.get<JarvisFolder[]>('/jarvis/folders').then(r => r.data),
+    apiClient.get<AssistantFolder[]>('/assistant/folders').then(r => r.data),
   createFolder: (data: { name: string; color?: string }) =>
-    apiClient.post<JarvisFolder>('/jarvis/folders', data).then(r => r.data),
+    apiClient.post<AssistantFolder>('/assistant/folders', data).then(r => r.data),
   updateFolder: (id: string, data: { name?: string; color?: string; position?: number }) =>
-    apiClient.patch<JarvisFolder>(`/jarvis/folders/${id}`, data).then(r => r.data),
+    apiClient.patch<AssistantFolder>(`/assistant/folders/${id}`, data).then(r => r.data),
   deleteFolder: (id: string) =>
-    apiClient.delete(`/jarvis/folders/${id}`),
+    apiClient.delete(`/assistant/folders/${id}`),
 
   listMessages: (id: string) =>
-    apiClient.get<JarvisMessage[]>(`/jarvis/conversations/${id}/messages`).then(r => r.data),
+    apiClient.get<AssistantMessage[]>(`/assistant/conversations/${id}/messages`).then(r => r.data),
 
   // Retour 👍/👎 sur un message (null pour retirer).
   setFeedback: (convId: string, msgId: string, feedback: 'like' | 'dislike' | null) =>
-    apiClient.patch(`/jarvis/conversations/${convId}/messages/${msgId}/feedback`, { feedback }),
+    apiClient.patch(`/assistant/conversations/${convId}/messages/${msgId}/feedback`, { feedback }),
 
   // Supprime un message d'une conversation.
   deleteMessage: (convId: string, msgId: string) =>
-    apiClient.delete(`/jarvis/conversations/${convId}/messages/${msgId}`),
+    apiClient.delete(`/assistant/conversations/${convId}/messages/${msgId}`),
 
   // Execute a single tool (after the user confirms a `confirm`-gated tool).
   callTool: (tool: string, args: Record<string, unknown>) =>
-    apiClient.post<{ result: string; is_error: boolean }>('/jarvis/tools/call', { tool, arguments: args }).then(r => r.data),
+    apiClient.post<{ result: string; is_error: boolean }>('/assistant/tools/call', { tool, arguments: args }).then(r => r.data),
 
   // Agents
   listAgents: () =>
-    apiClient.get<JarvisAgent[]>('/jarvis/agents').then(r => r.data),
+    apiClient.get<AssistantAgent[]>('/assistant/agents').then(r => r.data),
 
   createAgent: (data: { name: string; description?: string; system_prompt: string; default_model?: string }) =>
-    apiClient.post<JarvisAgent>('/jarvis/agents', data).then(r => r.data),
+    apiClient.post<AssistantAgent>('/assistant/agents', data).then(r => r.data),
 
   updateAgent: (id: string, data: Partial<{ name: string; description: string; system_prompt: string; default_model: string }>) =>
-    apiClient.patch<JarvisAgent>(`/jarvis/agents/${id}`, data).then(r => r.data),
+    apiClient.patch<AssistantAgent>(`/assistant/agents/${id}`, data).then(r => r.data),
 
   deleteAgent: (id: string) =>
-    apiClient.delete(`/jarvis/agents/${id}`),
+    apiClient.delete(`/assistant/agents/${id}`),
 
   // Models
   listModels: () =>
-    apiClient.get<ModelInfo[]>('/jarvis/models').then(r => r.data),
+    apiClient.get<ModelInfo[]>('/assistant/models').then(r => r.data),
 
   // Provider settings
   listProviders: () =>
-    apiClient.get<ProviderConfig[]>('/jarvis/settings/providers').then(r => r.data),
+    apiClient.get<ProviderConfig[]>('/assistant/settings/providers').then(r => r.data),
 
   updateProvider: (provider: string, data: UpdateProviderDto) =>
-    apiClient.patch<ProviderConfig>(`/jarvis/settings/providers/${provider}`, data).then(r => r.data),
+    apiClient.patch<ProviderConfig>(`/assistant/settings/providers/${provider}`, data).then(r => r.data),
 }

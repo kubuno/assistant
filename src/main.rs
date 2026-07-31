@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use kubuno_jarvis::{
+use kubuno_assistant::{
     config::Settings,
     router,
     services::{AnthropicService, GoogleService, OllamaService, OpenAiService},
@@ -14,7 +14,7 @@ use std::time::Duration;
 
 // ── CLI dispatch ──────────────────────────────────────────────────────────────
 
-/// Called by `kubuno jarvis:<cmd>` — the first arg is the sub-command name.
+/// Called by `kubuno assistant:<cmd>` — the first arg is the sub-command name.
 /// Additional args are passed through.
 async fn run_cli_command(cmd: &str, args: &[String]) -> Result<()> {
     let settings = Settings::load().context("Chargement configuration")?;
@@ -24,7 +24,7 @@ async fn run_cli_command(cmd: &str, args: &[String]) -> Result<()> {
             let svc = OllamaService::new(&settings.ollama.url, &settings.ollama.default_model, 30)
                 .context("Connexion Ollama")?;
             println!("Modèles disponibles :");
-            println!("  [{provider:^10}] {id}", provider = "FOURNISSEUR", id = "MODÈLE");
+            println!("  [{provider:^10}] MODÈLE", provider = "FOURNISSEUR");
             println!("  {}", "─".repeat(60));
             match svc.list_models().await {
                 Ok(models) => {
@@ -49,10 +49,10 @@ async fn run_cli_command(cmd: &str, args: &[String]) -> Result<()> {
 
         "providers" => {
             println!("Fournisseurs LLM configurés :");
-            println!("  {:<12} {:<8} {}", "FOURNISSEUR", "ACTIVÉ", "MODÈLE PAR DÉFAUT");
+            println!("  {:<12} {:<8} MODÈLE PAR DÉFAUT", "FOURNISSEUR", "ACTIVÉ");
             println!("  {}", "─".repeat(60));
             let ollama_ok = OllamaService::new(&settings.ollama.url, &settings.ollama.default_model, 5)
-                .map_or(false, |_| true);
+                .is_ok();
             println!("  {:<12} {:<8} {}  ({})",
                 "ollama",
                 if settings.ollama.enabled { "✓" } else { "✗" },
@@ -81,13 +81,13 @@ async fn run_cli_command(cmd: &str, args: &[String]) -> Result<()> {
             struct AgentRow { name: String, description: Option<String>, is_system: bool }
 
             let agents = sqlx::query_as::<_, AgentRow>(
-                "SELECT name, description, is_system FROM jarvis.agents ORDER BY is_system DESC, name"
+                "SELECT name, description, is_system FROM assistant.agents ORDER BY is_system DESC, name"
             ).fetch_all(&pool).await?;
 
             if agents.is_empty() {
                 println!("Aucun agent configuré.");
             } else {
-                println!("Agents Jarvis :");
+                println!("Agents Assistant :");
                 for a in &agents {
                     let tag = if a.is_system { "[système]" } else { "[perso]  " };
                     let desc = a.description.as_deref().unwrap_or("");
@@ -103,12 +103,12 @@ async fn run_cli_command(cmd: &str, args: &[String]) -> Result<()> {
                 .map(String::as_str)
                 .unwrap_or(&settings.ollama.default_model);
             println!("Le chat interactif nécessite un terminal TTY.");
-            println!("Utilisez l'interface web : http://{}:{}/jarvis", settings.server.host, settings.server.port);
-            println!("Ou démarrez le service avec : systemctl start kubuno-jarvis");
+            println!("Utilisez l'interface web : http://{}:{}/assistant", settings.server.host, settings.server.port);
+            println!("Ou démarrez le service avec : systemctl start kubuno-assistant");
         }
 
         unknown => {
-            eprintln!("Commande jarvis inconnue : {unknown}");
+            eprintln!("Commande assistant inconnue : {unknown}");
             eprintln!("Commandes disponibles : chat, models, providers, agents");
             std::process::exit(1);
         }
@@ -174,7 +174,7 @@ fn load_manifest() -> Option<Manifest> {
 async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
 
-    // If invoked as `kubuno-jarvis <command> [args]`, run CLI mode
+    // If invoked as `kubuno-assistant <command> [args]`, run CLI mode
     let cli_args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(cmd) = cli_args.first() {
         // Commands that don't start with '--' are CLI sub-commands
@@ -191,14 +191,14 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&log_level)),
     );
     match settings.logging.format {
-        kubuno_jarvis::config::LogFormat::Json   => subscriber.json().init(),
-        kubuno_jarvis::config::LogFormat::Pretty => subscriber.init(),
+        kubuno_assistant::config::LogFormat::Json   => subscriber.json().init(),
+        kubuno_assistant::config::LogFormat::Pretty => subscriber.init(),
     }
 
-    tracing::info!("Kubuno Jarvis v{} démarrage…", env!("CARGO_PKG_VERSION"));
+    tracing::info!("Kubuno Assistant v{} démarrage…", env!("CARGO_PKG_VERSION"));
 
     // Sécurité : interdire toute exécution de processus sur l’hôte (voir kubuno-seccomp).
-    kubuno_seccomp::lock_down_process_execution("jarvis");
+    kubuno_seccomp::lock_down_process_execution("assistant");
 
     // Pool PostgreSQL
     let opts = settings.database.connect_options()?;
@@ -212,15 +212,15 @@ async fn main() -> Result<()> {
 
     // Migrations
     if settings.database.run_migrations {
-        sqlx::query("CREATE SCHEMA IF NOT EXISTS jarvis")
+        sqlx::query("CREATE SCHEMA IF NOT EXISTS assistant")
             .execute(&pool)
             .await
-            .context("Création du schéma jarvis")?;
+            .context("Création du schéma assistant")?;
 
         let migration_opts = settings
             .database
             .connect_options()?
-            .options([("search_path", "jarvis,public")]);
+            .options([("search_path", "assistant,public")]);
         let migration_pool = PgPoolOptions::new()
             .max_connections(1)
             .acquire_timeout(settings.database.connect_timeout)
@@ -289,7 +289,7 @@ async fn main() -> Result<()> {
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(30)).await;
-                let url    = format!("{}/internal/modules/jarvis/heartbeat", settings2.core.url);
+                let url    = format!("{}/internal/modules/assistant/heartbeat", settings2.core.url);
                 let secret = &settings2.core.internal_secret;
                 match http2.post(&url).header("X-Internal-Secret", secret.as_str()).send().await {
                     Ok(r) if r.status().is_success() => {}
@@ -312,7 +312,7 @@ async fn main() -> Result<()> {
         .await
         .with_context(|| format!("Bind sur {addr}"))?;
 
-    tracing::info!("Kubuno Jarvis démarré sur http://{addr}");
+    tracing::info!("Kubuno Assistant démarré sur http://{addr}");
 
     let app = router::build(state);
     axum::serve(listener, app.into_make_service())
@@ -335,7 +335,7 @@ async fn register_with_core(http: &Client, settings: &Settings) {
     let display_name = manifest
         .as_ref()
         .map(|m| m.module.display_name.as_str())
-        .unwrap_or("Jarvis")
+        .unwrap_or("Assistant")
         .to_string();
     let description = manifest
         .as_ref()
@@ -358,10 +358,10 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         })
         .unwrap_or_else(|| {
             vec![json!({
-                "id":       "jarvis",
-                "label":    "Jarvis",
+                "id":       "assistant",
+                "label":    "Assistant",
                 "icon":     "Sparkles",
-                "path":     "/jarvis",
+                "path":     "/assistant",
                 "position": 50,
             })]
         });
@@ -379,7 +379,7 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         .and_then(|m| m.module.settings_path.clone());
 
     let payload = json!({
-        "module_id":         "jarvis",
+        "module_id":         "assistant",
         "display_name":      display_name,
         "description":       description,
         "base_url":          base_url,
@@ -401,7 +401,7 @@ async fn register_with_core(http: &Client, settings: &Settings) {
             .await
         {
             Ok(resp) if resp.status().is_success() => {
-                tracing::info!("Module jarvis enregistré auprès du core");
+                tracing::info!("Module assistant enregistré auprès du core");
                 return;
             }
             Ok(resp) if resp.status() == reqwest::StatusCode::FORBIDDEN => {

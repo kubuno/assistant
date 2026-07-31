@@ -2,14 +2,14 @@ use axum::{extract::FromRequestParts, http::{request::Parts, StatusCode}};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
-pub struct JarvisUser {
+pub struct AssistantUser {
     pub id:    Uuid,
     pub role:  String,
     pub email: String,
 }
 
 #[axum::async_trait]
-impl<S: Send + Sync> FromRequestParts<S> for JarvisUser {
+impl<S: Send + Sync> FromRequestParts<S> for AssistantUser {
     type Rejection = StatusCode;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
@@ -34,6 +34,6 @@ impl<S: Send + Sync> FromRequestParts<S> for JarvisUser {
             .unwrap_or("")
             .to_string();
 
-        Ok(JarvisUser { id, role, email })
+        Ok(AssistantUser { id, role, email })
     }
 }

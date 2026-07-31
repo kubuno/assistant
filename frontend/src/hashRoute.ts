@@ -1,10 +1,10 @@
 /**
  * Addressable sub-views that have no dedicated router route.
  *
- * The module page lives at `/jarvis`; the selected conversation is a state of
+ * The module page lives at `/assistant`; the selected conversation is a state of
  * that page, not a route. To keep every clickable element in the sidebar a real
  * link (and to make direct links / the browser Back button work), such views are
- * encoded in the URL hash: `/jarvis/#<kind>/<id>`.
+ * encoded in the URL hash: `/assistant/#<kind>/<id>`.
  *
  * `hashTo` builds the link target (usable as `<Link to={…}>`), `fromHash` parses
  * `useLocation().hash` back into the view it designates.
@@ -12,9 +12,9 @@
 
 export type HashKind = 'conversation'
 
-/** Link target for an addressable sub-view, e.g. `/jarvis/#conversation/<id>`. */
+/** Link target for an addressable sub-view, e.g. `/assistant/#conversation/<id>`. */
 export function hashTo(kind: HashKind, id: string): string {
-  return `/jarvis/#${kind}/${encodeURIComponent(id)}`
+  return `/assistant/#${kind}/${encodeURIComponent(id)}`
 }
 
 /** Parse a `useLocation().hash` value back into `{ kind, id }`, or null. */

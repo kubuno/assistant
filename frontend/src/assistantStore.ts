@@ -1,19 +1,19 @@
 import { create } from 'zustand'
-import { jarvisApi, ConversationSummary, JarvisMessage, JarvisToolCall, JarvisAgent, JarvisFolder, ModelInfo } from './api'
+import { assistantApi, ConversationSummary, AssistantMessage, AssistantToolCall, AssistantAgent, AssistantFolder, ModelInfo } from './api'
 
-interface JarvisState {
+interface AssistantState {
   conversations:   ConversationSummary[]
-  folders:         JarvisFolder[]
+  folders:         AssistantFolder[]
   activeConvId:    string | null
-  messages:        JarvisMessage[]
-  agents:          JarvisAgent[]
+  messages:        AssistantMessage[]
+  agents:          AssistantAgent[]
   models:          ModelInfo[]
   selectedModel:    string | null
   selectedProvider: string | null
   selectedAgentId:  string | null
   isStreaming:     boolean
   streamingText:   string
-  streamingToolCalls: JarvisToolCall[]
+  streamingToolCalls: AssistantToolCall[]
   isSidebarOpen:   boolean
 
   // Actions
@@ -27,7 +27,7 @@ interface JarvisState {
   setSelectedAgentId:  (id: string | null) => void
   toggleSidebar:       () => void
   appendDelta:         (delta: string) => void
-  appendToolCall:      (call: JarvisToolCall) => void
+  appendToolCall:      (call: AssistantToolCall) => void
   finalizeStream:      (msgId: string, promptTokens: number, completionTokens: number) => void
   startStream:         () => void
   addUserMessage:      (content: string) => void
@@ -54,7 +54,7 @@ interface JarvisState {
 // Contrôleur d'annulation du flux courant (hors état zustand pour éviter les rerenders).
 let streamAbort: AbortController | null = null
 
-export const useJarvisStore = create<JarvisState>((set, get) => ({
+export const useAssistantStore = create<AssistantState>((set, get) => ({
   conversations:   [],
   folders:         [],
   activeConvId:    null,
@@ -70,22 +70,22 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
   isSidebarOpen:   true,
 
   fetchConversations: async () => {
-    const data = await jarvisApi.listConversations()
+    const data = await assistantApi.listConversations()
     set({ conversations: data })
   },
 
   fetchMessages: async (id) => {
-    const data = await jarvisApi.listMessages(id)
+    const data = await assistantApi.listMessages(id)
     set({ messages: data, streamingText: '' })
   },
 
   fetchAgents: async () => {
-    const data = await jarvisApi.listAgents()
+    const data = await assistantApi.listAgents()
     set({ agents: data })
   },
 
   fetchModels: async () => {
-    const data = await jarvisApi.listModels()
+    const data = await assistantApi.listModels()
     const defaultModel = data.find(m => m.is_default)?.id ?? data[0]?.id ?? null
     const defaultProvider = data.find(m => m.is_default)?.provider ?? data[0]?.provider ?? null
     set({
@@ -111,7 +111,7 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
     const content = get().streamingText
     const toolCalls = get().streamingToolCalls
     const activeConvId = get().activeConvId
-    const assistantMsg: JarvisMessage = {
+    const assistantMsg: AssistantMessage = {
       id:                msgId,
       conversation_id:   activeConvId ?? '',
       role:              'assistant',
@@ -132,7 +132,7 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
   },
 
   addUserMessage: (content) => {
-    const msg: JarvisMessage = {
+    const msg: AssistantMessage = {
       id:                crypto.randomUUID(),
       conversation_id:   get().activeConvId ?? '',
       role:              'user',
@@ -153,7 +153,7 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
     try {
       const sdk = await import('@kubuno/sdk')
       const token = sdk.useAuthStore.getState().accessToken
-      const resp = await fetch(`/api/v1/jarvis/conversations/${convId}/chat`, {
+      const resp = await fetch(`/api/v1/assistant/conversations/${convId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ content: body.content ?? '', model: get().selectedModel ?? undefined, regenerate: body.regenerate ?? false }),
@@ -177,7 +177,7 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
             const evt = JSON.parse(data)
             if (evt.type === 'delta') get().appendDelta(evt.content)
             else if (evt.type === 'tool_call') {
-              const call = evt.call as JarvisToolCall
+              const call = evt.call as AssistantToolCall
               get().appendToolCall(call)
               if (call.kind === 'ui' && call.ui) {
                 try { sdk.ModuleServiceRegistry.call(call.ui.service, call.ui.method, call.args) }
@@ -216,14 +216,14 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
     const cur = get().messages.find(m => m.id === msgId)?.feedback
     const next = cur === feedback ? null : feedback
     set(s => ({ messages: s.messages.map(m => m.id === msgId ? { ...m, feedback: next } : m) }))
-    try { await jarvisApi.setFeedback(convId, msgId, next) }
+    try { await assistantApi.setFeedback(convId, msgId, next) }
     catch { set(s => ({ messages: s.messages.map(m => m.id === msgId ? { ...m, feedback: cur ?? null } : m) })) }
   },
 
   togglePin: async (id) => {
     const conv = get().conversations.find(c => c.conversation.id === id)
     if (!conv) return
-    const updated = await jarvisApi.updateConversation(id, { is_pinned: !conv.conversation.is_pinned })
+    const updated = await assistantApi.updateConversation(id, { is_pinned: !conv.conversation.is_pinned })
     set(s => ({
       conversations: s.conversations.map(c =>
         c.conversation.id === id ? { ...c, conversation: updated } : c
@@ -234,12 +234,12 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
   renameConversation: async (id, title) => {
     const t = title.trim()
     if (!t) return
-    const updated = await jarvisApi.updateConversation(id, { title: t })
+    const updated = await assistantApi.updateConversation(id, { title: t })
     set(s => ({ conversations: s.conversations.map(c => c.conversation.id === id ? { ...c, conversation: updated } : c) }))
   },
 
   deleteConversation: async (id) => {
-    await jarvisApi.deleteConversation(id)
+    await assistantApi.deleteConversation(id)
     set(s => ({
       conversations: s.conversations.filter(c => c.conversation.id !== id),
       activeConvId:  s.activeConvId === id ? null : s.activeConvId,
@@ -255,7 +255,7 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
       activeConvId:  s.activeConvId === id ? null : s.activeConvId,
       messages:      s.activeConvId === id ? [] : s.messages,
     }))
-    try { await jarvisApi.updateConversation(id, { is_archived: true }) }
+    try { await assistantApi.updateConversation(id, { is_archived: true }) }
     catch { set({ conversations: prev }) }
   },
 
@@ -271,13 +271,13 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
     }))
     try {
       await Promise.all(orderedIds.map((id, i) =>
-        jarvisApi.updateConversation(id, { position: i })))
+        assistantApi.updateConversation(id, { position: i })))
     } catch { get().fetchConversations() } // resync si échec
   },
 
   deleteMessage: async (convId, msgId) => {
     set(s => ({ messages: s.messages.filter(m => m.id !== msgId) }))
-    try { await jarvisApi.deleteMessage(convId, msgId) }
+    try { await assistantApi.deleteMessage(convId, msgId) }
     catch { get().fetchMessages(convId) } // resync si échec
   },
 
@@ -291,14 +291,14 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
     if (idx < 0) return
     const removed = msgs.slice(idx)
     set({ messages: msgs.slice(0, idx) })
-    for (const m of removed) { try { await jarvisApi.deleteMessage(convId, m.id) } catch { /* déjà absent */ } }
+    for (const m of removed) { try { await assistantApi.deleteMessage(convId, m.id) } catch { /* déjà absent */ } }
     get().addUserMessage(c)
     await get().streamChat(convId, { content: c })
   },
 
   createConversation: async (opts) => {
     const agentId = opts?.agentId ?? get().selectedAgentId ?? undefined
-    const conv = await jarvisApi.createConversation({
+    const conv = await assistantApi.createConversation({
       title:    opts?.title,
       agent_id: agentId,
       model:    get().selectedModel    ?? undefined,
@@ -310,14 +310,14 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
 
   // ── Dossiers ──────────────────────────────────────────────────────────────────
   fetchFolders: async () => {
-    const data = await jarvisApi.listFolders()
+    const data = await assistantApi.listFolders()
     set({ folders: data })
   },
 
   createFolder: async (name) => {
     const n = name.trim()
     if (!n) return undefined
-    const f = await jarvisApi.createFolder({ name: n })
+    const f = await assistantApi.createFolder({ name: n })
     set(s => ({ folders: [...s.folders, f] }))
     return f.id
   },
@@ -325,12 +325,12 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
   renameFolder: async (id, name) => {
     const n = name.trim()
     if (!n) return
-    const f = await jarvisApi.updateFolder(id, { name: n })
+    const f = await assistantApi.updateFolder(id, { name: n })
     set(s => ({ folders: s.folders.map(x => x.id === id ? f : x) }))
   },
 
   deleteFolder: async (id) => {
-    await jarvisApi.deleteFolder(id)
+    await assistantApi.deleteFolder(id)
     // Les conversations du dossier sont détachées (folder_id → null) côté serveur.
     set(s => ({
       folders: s.folders.filter(f => f.id !== id),
@@ -342,7 +342,7 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
   moveConversation: async (convId, folderId) => {
     set(s => ({ conversations: s.conversations.map(c =>
       c.conversation.id === convId ? { ...c, conversation: { ...c.conversation, folder_id: folderId } } : c) }))
-    try { await jarvisApi.updateConversation(convId, { folder_id: folderId }) }
+    try { await assistantApi.updateConversation(convId, { folder_id: folderId }) }
     catch { get().fetchConversations() }
   },
 }))

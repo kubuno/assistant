@@ -3,10 +3,10 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Plus, Search, Library, Pin, Trash2, Pencil, FolderPlus, FolderInput, ChevronRight, Folder, Check, X, Share2, UserPlus, Archive } from 'lucide-react'
 import { MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
 import { prompt } from '@kubuno/sdk'
-import { useJarvisStore } from '../jarvisStore'
+import { useAssistantStore } from '../assistantStore'
 import { isToday, isYesterday, subDays, isAfter } from 'date-fns'
 import { hashTo, fromHash } from '../hashRoute'
-import type { ConversationSummary, JarvisFolder } from '../api'
+import type { ConversationSummary, AssistantFolder } from '../api'
 
 // Every clickable element of the sidebar is an <a>. Pure actions (no target
 // view) use href="#" + role="button": Enter is native on an anchor, only Space
@@ -80,7 +80,7 @@ function groupConversations(convs: ConversationSummary[]) {
 function ConvItem({ item, active, folders, onSelect, onPin, onDelete, onRename, onMove, onArchive, onNewProject }: {
   item: ConversationSummary
   active: boolean
-  folders: JarvisFolder[]
+  folders: AssistantFolder[]
   onSelect: () => void
   onPin: () => void
   onDelete: () => void
@@ -179,7 +179,7 @@ function DateSections({ groups, ...rest }: { groups: ReturnType<typeof groupConv
 
 interface ItemHandlers {
   activeId: string | null
-  folders: JarvisFolder[]
+  folders: AssistantFolder[]
   onSelect: (id: string) => void
   onPin: (id: string) => void
   onDelete: (id: string) => void
@@ -249,7 +249,7 @@ function SortableList({ items, ...rest }: { items: ConversationSummary[] } & Ite
 // ── Dossier (repliable, avec ses conversations) ─────────────────────────────────
 
 function FolderSection({ folder, items, collapsed, onToggle, onRenameFolder, onDeleteFolder, ...rest }: {
-  folder: JarvisFolder
+  folder: AssistantFolder
   items: ConversationSummary[]
   collapsed: boolean
   onToggle: () => void
@@ -304,18 +304,18 @@ function FolderSection({ folder, items, collapsed, onToggle, onRenameFolder, onD
 
 // ── Main ────────────────────────────────────────────────────────────────────────
 
-export default function JarvisSidebarBody({ collapsed = false }: { collapsed?: boolean }) {
+export default function AssistantSidebarBody({ collapsed = false }: { collapsed?: boolean }) {
   const {
     conversations, folders, activeConvId,
     setActiveConv, createConversation,
     togglePin, deleteConversation, archiveConversation, renameConversation,
     createFolder, renameFolder, deleteFolder, moveConversation, reorderConversations,
-  } = useJarvisStore()
+  } = useAssistantStore()
 
   const location = useLocation()
   const navigate = useNavigate()
 
-  // The selected conversation is addressable: `/jarvis/#conversation/<id>`.
+  // The selected conversation is addressable: `/assistant/#conversation/<id>`.
   // Reading it back from the hash makes direct links and the Back button work.
   useEffect(() => {
     const view = fromHash(location.hash)
@@ -392,7 +392,7 @@ export default function JarvisSidebarBody({ collapsed = false }: { collapsed?: b
 
       {/* Quick nav */}
       <nav className="px-3 mb-1 space-y-0.5">
-        <a {...actionProps(() => document.getElementById('jarvis-search-input')?.focus())}
+        <a {...actionProps(() => document.getElementById('assistant-search-input')?.focus())}
           {...hoverBg(ROW_HOVER)}
           className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-sm text-text-secondary transition-colors cursor-pointer ${FOCUS_RING}`}>
           <Search size={18} /> Rechercher
@@ -426,7 +426,7 @@ export default function JarvisSidebarBody({ collapsed = false }: { collapsed?: b
 
       {/* Search input */}
       <div className="px-3 mb-2">
-        <input id="jarvis-search-input" type="text" value={search} onChange={e => setSearch(e.target.value)}
+        <input id="assistant-search-input" type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Rechercher dans les discussions…"
           className="w-full text-sm border border-border rounded-full px-3 py-1.5 focus:outline-none focus:border-primary bg-surface-1 text-text-primary placeholder:text-text-tertiary"
           style={{ display: search ? 'block' : 'none' }} />

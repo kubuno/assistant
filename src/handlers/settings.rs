@@ -1,7 +1,7 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::{errors::JarvisResult, middleware::JarvisUser, state::AppState};
+use crate::{errors::AssistantResult, middleware::AssistantUser, state::AppState};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct ProviderConfig {
@@ -39,10 +39,10 @@ fn mask_key(key: &str) -> String {
 
 pub async fn list_providers(
     State(st): State<AppState>,
-    _user: JarvisUser,
-) -> JarvisResult<Json<Vec<ProviderConfig>>> {
+    _user: AssistantUser,
+) -> AssistantResult<Json<Vec<ProviderConfig>>> {
     let rows = sqlx::query_as::<_, ProviderConfigRow>(
-        "SELECT provider, enabled, api_key, base_url, default_model FROM jarvis.provider_config ORDER BY provider"
+        "SELECT provider, enabled, api_key, base_url, default_model FROM assistant.provider_config ORDER BY provider"
     )
     .fetch_all(&st.db)
     .await?;
@@ -60,17 +60,17 @@ pub async fn list_providers(
 
 pub async fn update_provider(
     State(st): State<AppState>,
-    _user: JarvisUser,
+    _user: AssistantUser,
     axum::extract::Path(provider): axum::extract::Path<String>,
     Json(dto): Json<UpdateProviderDto>,
-) -> JarvisResult<Json<ProviderConfig>> {
+) -> AssistantResult<Json<ProviderConfig>> {
     let valid_providers = ["ollama", "openai", "anthropic", "google"];
     if !valid_providers.contains(&provider.as_str()) {
-        return Err(crate::errors::JarvisError::NotFound(format!("Provider inconnu: {provider}")));
+        return Err(crate::errors::AssistantError::NotFound(format!("Provider inconnu: {provider}")));
     }
 
     let row = sqlx::query_as::<_, ProviderConfigRow>(
-        r#"UPDATE jarvis.provider_config SET
+        r#"UPDATE assistant.provider_config SET
                enabled       = COALESCE($2, enabled),
                api_key       = COALESCE($3, api_key),
                base_url      = COALESCE($4, base_url),

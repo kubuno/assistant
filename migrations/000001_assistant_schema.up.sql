@@ -1,6 +1,6 @@
-CREATE SCHEMA IF NOT EXISTS jarvis;
+CREATE SCHEMA IF NOT EXISTS assistant;
 
-CREATE OR REPLACE FUNCTION jarvis.set_updated_at()
+CREATE OR REPLACE FUNCTION assistant.set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
@@ -8,7 +8,7 @@ $$ LANGUAGE plpgsql;
 -- =====================
 -- CONVERSATIONS
 -- =====================
-CREATE TABLE jarvis.conversations (
+CREATE TABLE assistant.conversations (
     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     owner_id         UUID NOT NULL,
     title            VARCHAR(500),
@@ -27,19 +27,19 @@ CREATE TABLE jarvis.conversations (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_jarvis_conv_owner  ON jarvis.conversations(owner_id, updated_at DESC);
-CREATE INDEX idx_jarvis_conv_pinned ON jarvis.conversations(owner_id) WHERE is_pinned = TRUE;
+CREATE INDEX idx_assistant_conv_owner  ON assistant.conversations(owner_id, updated_at DESC);
+CREATE INDEX idx_assistant_conv_pinned ON assistant.conversations(owner_id) WHERE is_pinned = TRUE;
 
 CREATE TRIGGER conversations_updated_at
-    BEFORE UPDATE ON jarvis.conversations
-    FOR EACH ROW EXECUTE FUNCTION jarvis.set_updated_at();
+    BEFORE UPDATE ON assistant.conversations
+    FOR EACH ROW EXECUTE FUNCTION assistant.set_updated_at();
 
 -- =====================
 -- MESSAGES
 -- =====================
-CREATE TABLE jarvis.messages (
+CREATE TABLE assistant.messages (
     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    conversation_id   UUID NOT NULL REFERENCES jarvis.conversations(id) ON DELETE CASCADE,
+    conversation_id   UUID NOT NULL REFERENCES assistant.conversations(id) ON DELETE CASCADE,
     role              VARCHAR(15) NOT NULL
                           CHECK (role IN ('user', 'assistant', 'system', 'tool')),
     content           TEXT NOT NULL DEFAULT '',
@@ -54,13 +54,13 @@ CREATE TABLE jarvis.messages (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_jarvis_messages_conv ON jarvis.messages(conversation_id, created_at ASC);
+CREATE INDEX idx_assistant_messages_conv ON assistant.messages(conversation_id, created_at ASC);
 
 -- Trigger: incrémenter message_count
-CREATE OR REPLACE FUNCTION jarvis.update_conversation_stats()
+CREATE OR REPLACE FUNCTION assistant.update_conversation_stats()
 RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE jarvis.conversations
+    UPDATE assistant.conversations
     SET message_count = message_count + 1,
         total_tokens  = total_tokens + NEW.prompt_tokens + NEW.completion_tokens,
         updated_at    = NOW()
@@ -70,5 +70,5 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER messages_update_conv
-    AFTER INSERT ON jarvis.messages
-    FOR EACH ROW EXECUTE FUNCTION jarvis.update_conversation_stats();
+    AFTER INSERT ON assistant.messages
+    FOR EACH ROW EXECUTE FUNCTION assistant.update_conversation_stats();

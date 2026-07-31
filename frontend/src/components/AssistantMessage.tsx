@@ -3,13 +3,13 @@ import { useState } from 'react'
 import { MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
 import MarkdownRenderer from './MarkdownRenderer'
 import ToolCallCard from './ToolCallCard'
-import { useJarvisStore } from '../jarvisStore'
-import type { JarvisToolCall } from '../api'
+import { useAssistantStore } from '../assistantStore'
+import type { AssistantToolCall } from '../api'
 
 interface Props {
   content:   string
   streaming?: boolean
-  toolCalls?: JarvisToolCall[]
+  toolCalls?: AssistantToolCall[]
   messageId?: string
   createdAt?: string
   promptTokens?: number
@@ -27,7 +27,7 @@ function fmtDateTime(iso?: string): string {
 
 export default function AssistantMessage({ content, streaming, toolCalls, messageId, createdAt, feedback, isLast }: Props) {
   const [copied, setCopied] = useState(false)
-  const { activeConvId, setMessageFeedback, regenerate, deleteMessage, isStreaming } = useJarvisStore()
+  const { activeConvId, setMessageFeedback, regenerate, deleteMessage, isStreaming } = useAssistantStore()
   const more = useMenuDropdown()
 
   const copyToClipboard = async () => {

@@ -6,21 +6,21 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    errors::{JarvisError, JarvisResult},
-    middleware::JarvisUser,
+    errors::{AssistantError, AssistantResult},
+    middleware::AssistantUser,
     models::{Conversation, ConversationSummary, CreateConversationDto, Message, UpdateConversationDto},
     state::AppState,
 };
 
 pub async fn list_conversations(
     State(st): State<AppState>,
-    user: JarvisUser,
-) -> JarvisResult<Json<Vec<ConversationSummary>>> {
+    user: AssistantUser,
+) -> AssistantResult<Json<Vec<ConversationSummary>>> {
     let rows = sqlx::query_as::<_, Conversation>(
         r#"
         SELECT id, owner_id, agent_id, title, model_id, message_count, total_tokens,
                is_pinned, is_archived, folder_id, position, created_at, updated_at
-        FROM jarvis.conversations
+        FROM assistant.conversations
         WHERE owner_id = $1 AND is_archived = false AND is_trashed = false
         ORDER BY is_pinned DESC, position ASC, updated_at DESC
         "#,
@@ -32,7 +32,7 @@ pub async fn list_conversations(
     let mut summaries = Vec::with_capacity(rows.len());
     for conv in rows {
         let last_message: Option<String> = sqlx::query_scalar(
-            "SELECT content FROM jarvis.messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1",
+            "SELECT content FROM assistant.messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1",
         )
         .bind(conv.id)
         .fetch_optional(&st.db)
@@ -46,28 +46,28 @@ pub async fn list_conversations(
 
 pub async fn get_conversation(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
-) -> JarvisResult<Json<Conversation>> {
+) -> AssistantResult<Json<Conversation>> {
     let conv = sqlx::query_as::<_, Conversation>(
         r#"SELECT id, owner_id, agent_id, title, model_id, message_count, total_tokens,
                   is_pinned, is_archived, folder_id, position, created_at, updated_at
-           FROM jarvis.conversations WHERE id = $1 AND owner_id = $2"#,
+           FROM assistant.conversations WHERE id = $1 AND owner_id = $2"#,
     )
     .bind(id)
     .bind(user.id)
     .fetch_optional(&st.db)
     .await?
-    .ok_or_else(|| JarvisError::NotFound("conversation introuvable".into()))?;
+    .ok_or_else(|| AssistantError::NotFound("conversation introuvable".into()))?;
 
     Ok(Json(conv))
 }
 
 pub async fn create_conversation(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Json(dto): Json<CreateConversationDto>,
-) -> JarvisResult<(StatusCode, Json<Conversation>)> {
+) -> AssistantResult<(StatusCode, Json<Conversation>)> {
     let default_model = st.ollama.default_model().to_string();
     let model_id  = dto.model.unwrap_or(default_model);
     let valid_providers = ["ollama", "openai", "anthropic", "google"];
@@ -79,7 +79,7 @@ pub async fn create_conversation(
         Some(id) => Some(id),
         None => {
             sqlx::query_scalar::<_, Uuid>(
-                "SELECT id FROM jarvis.agents WHERE is_system = true ORDER BY created_at LIMIT 1",
+                "SELECT id FROM assistant.agents WHERE is_system = true ORDER BY created_at LIMIT 1",
             )
             .fetch_optional(&st.db)
             .await?
@@ -89,7 +89,7 @@ pub async fn create_conversation(
     let title = dto.title.as_deref().map(ToOwned::to_owned);
 
     let conv = sqlx::query_as::<_, Conversation>(
-        r#"INSERT INTO jarvis.conversations (id, owner_id, agent_id, title, model_id, provider)
+        r#"INSERT INTO assistant.conversations (id, owner_id, agent_id, title, model_id, provider)
            VALUES (COALESCE($6, uuid_generate_v4()), $1, $2, $3, $4, $5)
            RETURNING id, owner_id, agent_id, title, model_id, message_count, total_tokens,
                      is_pinned, is_archived, folder_id, position, created_at, updated_at"#,
@@ -108,15 +108,15 @@ pub async fn create_conversation(
 
 pub async fn update_conversation(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateConversationDto>,
-) -> JarvisResult<Json<Conversation>> {
+) -> AssistantResult<Json<Conversation>> {
     // folder_id : Option<Option<Uuid>> → (mettre à jour ?, valeur). `$8` IS NULL
     // dans la garde quand on ne touche pas au dossier.
     let (set_folder, folder_val) = match dto.folder_id { Some(v) => (true, v), None => (false, None) };
     let conv = sqlx::query_as::<_, Conversation>(
-        r#"UPDATE jarvis.conversations SET
+        r#"UPDATE assistant.conversations SET
                title       = COALESCE($3, title),
                is_pinned   = COALESCE($4, is_pinned),
                is_archived = COALESCE($5, is_archived),
@@ -126,7 +126,7 @@ pub async fn update_conversation(
            WHERE id = $1 AND owner_id = $2
              -- N'autorise que les dossiers de l'utilisateur (ou la sortie de dossier).
              AND (NOT $8 OR $7 IS NULL OR EXISTS (
-                   SELECT 1 FROM jarvis.folders f WHERE f.id = $7 AND f.owner_id = $2))
+                   SELECT 1 FROM assistant.folders f WHERE f.id = $7 AND f.owner_id = $2))
            RETURNING id, owner_id, agent_id, title, model_id, message_count, total_tokens,
                      is_pinned, is_archived, folder_id, position, created_at, updated_at"#,
     )
@@ -141,18 +141,18 @@ pub async fn update_conversation(
     .bind(dto.position)
     .fetch_optional(&st.db)
     .await?
-    .ok_or_else(|| JarvisError::NotFound("conversation introuvable".into()))?;
+    .ok_or_else(|| AssistantError::NotFound("conversation introuvable".into()))?;
 
     Ok(Json(conv))
 }
 
 pub async fn delete_conversation(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
-) -> JarvisResult<StatusCode> {
+) -> AssistantResult<StatusCode> {
     let rows = sqlx::query(
-        "DELETE FROM jarvis.conversations WHERE id = $1 AND owner_id = $2",
+        "DELETE FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
     .bind(user.id)
@@ -161,7 +161,7 @@ pub async fn delete_conversation(
     .rows_affected();
 
     if rows == 0 {
-        return Err(JarvisError::NotFound("conversation introuvable".into()));
+        return Err(AssistantError::NotFound("conversation introuvable".into()));
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -169,11 +169,11 @@ pub async fn delete_conversation(
 
 pub async fn list_messages(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(id): Path<Uuid>,
-) -> JarvisResult<Json<Vec<Message>>> {
+) -> AssistantResult<Json<Vec<Message>>> {
     let exists: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM jarvis.conversations WHERE id = $1 AND owner_id = $2",
+        "SELECT COUNT(*) FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
     .bind(user.id)
@@ -181,12 +181,12 @@ pub async fn list_messages(
     .await?;
 
     if exists == 0 {
-        return Err(JarvisError::NotFound("conversation introuvable".into()));
+        return Err(AssistantError::NotFound("conversation introuvable".into()));
     }
 
     let messages = sqlx::query_as::<_, Message>(
         r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
-           FROM jarvis.messages
+           FROM assistant.messages
            WHERE conversation_id = $1
            ORDER BY created_at ASC"#,
     )

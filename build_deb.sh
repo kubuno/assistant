@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# build_deb.sh — construit le paquet Debian du module Kubuno Calendar.
+# build_deb.sh — construit le paquet Debian du module Kubuno Assistant.
 #
 # Produit le MÊME layout d'installation que le monorepo, afin que le core
 # découvre le module à l'identique :
-#   /usr/lib/kubuno/modules/jarvis/{kubuno-jarvis, module.toml, frontend/}
-#   /usr/share/kubuno/modules/jarvis/migrations/*.sql
-#   /etc/kubuno/modules/jarvis/config.toml.example
+#   /usr/lib/kubuno/modules/assistant/{kubuno-assistant, module.toml, frontend/}
+#   /usr/share/kubuno/modules/assistant/migrations/*.sql
+#   /etc/kubuno/modules/assistant/config.toml.example
 #
 # Usage :
 #   bash build_deb.sh            # build le .deb dans dist/
@@ -16,7 +16,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 export SQLX_OFFLINE=true   # utilise le cache .sqlx (pas de DB au build)
 
-MODULE="jarvis"
+MODULE="assistant"
 PACKAGE="kubuno-${MODULE}"
 ARCH="$(dpkg --print-architecture)"
 VERSION="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
@@ -76,7 +76,7 @@ Depends: libssl3, ca-certificates, kubuno-core (>= ${VERSION})
 Section: web
 Priority: optional
 Homepage: https://github.com/kubuno/${MODULE}
-Description: Kubuno Calendar — module calendriers et événements (build ${BUILD_NUM})
+Description: Kubuno Assistant — assistant IA multi-modèles (build ${BUILD_NUM})
 EOF
 
 cat > "${PKG_DIR}/DEBIAN/postinst" << POSTINST

@@ -1,7 +1,7 @@
 -- =====================
 -- AGENTS PERSONNALISÉS
 -- =====================
-CREATE TABLE jarvis.agents (
+CREATE TABLE assistant.agents (
     id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     owner_id           UUID,
     name               VARCHAR(255) NOT NULL,
@@ -20,20 +20,20 @@ CREATE TABLE jarvis.agents (
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_jarvis_agents_owner  ON jarvis.agents(owner_id);
-CREATE INDEX idx_jarvis_agents_public ON jarvis.agents(is_public) WHERE is_public = TRUE;
-CREATE INDEX idx_jarvis_agents_system ON jarvis.agents(is_system) WHERE is_system = TRUE;
+CREATE INDEX idx_assistant_agents_owner  ON assistant.agents(owner_id);
+CREATE INDEX idx_assistant_agents_public ON assistant.agents(is_public) WHERE is_public = TRUE;
+CREATE INDEX idx_assistant_agents_system ON assistant.agents(is_system) WHERE is_system = TRUE;
 
 -- Agents système prédéfinis
-INSERT INTO jarvis.agents
+INSERT INTO assistant.agents
     (name, description, avatar_emoji, avatar_color, system_prompt,
      enabled_tools, is_system, prompt_suggestions)
 VALUES
 (
-    'Jarvis',
+    'Assistant',
     'Assistant général Kubuno — accès à tous vos modules',
     '🤖', '#1a73e8',
-    'Tu es Jarvis, l''assistant IA de Kubuno, une plateforme cloud self-hosted. '
+    'Tu es Assistant, l''assistant IA de Kubuno, une plateforme cloud self-hosted. '
     'Tu es toujours utile, concis et précis. '
     'Réponds en français sauf si l''utilisateur écrit dans une autre langue.',
     ARRAY[]::text[],

@@ -1,5 +1,5 @@
 import { Plus, Pin, Trash2, Sparkles, Settings2 } from 'lucide-react'
-import { useJarvisStore } from '../jarvisStore'
+import { useAssistantStore } from '../assistantStore'
 import { ConversationSummary } from '../api'
 import { isToday, isYesterday, subDays, isAfter } from 'date-fns'
 
@@ -98,7 +98,7 @@ interface Props {
 }
 
 export default function ConversationSidebar({ onSelectConv, onNewConv, onOpenSettings }: Props) {
-  const { conversations, activeConvId, togglePin, deleteConversation } = useJarvisStore()
+  const { conversations, activeConvId, togglePin, deleteConversation } = useAssistantStore()
   const groups = groupConversations(conversations)
 
   return (
@@ -108,12 +108,12 @@ export default function ConversationSidebar({ onSelectConv, onNewConv, onOpenSet
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
           <Sparkles size={14} className="text-white" />
         </div>
-        <span className="font-semibold text-text-primary flex-1">Jarvis</span>
+        <span className="font-semibold text-text-primary flex-1">Assistant</span>
         {onOpenSettings && (
           <button
             onClick={onOpenSettings}
             className="p-1 rounded hover:bg-surface-2 text-text-tertiary hover:text-text-primary"
-            title="Paramètres Jarvis"
+            title="Paramètres Assistant"
           >
             <Settings2 size={14} />
           </button>

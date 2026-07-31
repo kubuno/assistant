@@ -1,7 +1,7 @@
 //! Minimal MCP client — talks to the core's internal MCP gateway
 //! (`POST {core}/internal/mcp`) on behalf of a user, so the assistant can
 //! discover and invoke the tools every module declares. Identity is carried by
-//! the `x-kubuno-user-id` header; trust by `x-internal-secret` (jarvis is an
+//! the `x-kubuno-user-id` header; trust by `x-internal-secret` (assistant is an
 //! internal, trusted module).
 
 use anyhow::{Context, Result};

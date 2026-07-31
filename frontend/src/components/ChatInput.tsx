@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, KeyboardEvent } from 'react'
 import { Plus, Square, Mic, ImagePlus, X, ChevronDown } from 'lucide-react'
 import { useVoiceDictation } from '@kubuno/sdk'
 import { MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
-import { useJarvisStore } from '../jarvisStore'
+import { useAssistantStore } from '../assistantStore'
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
     isStreaming, selectedModel, models,
     addUserMessage, streamChat, stopStream,
     createConversation, setSelectedModel, setSelectedProvider,
-  } = useJarvisStore()
+  } = useAssistantStore()
 
   const plusItems: MenuItem[] = [
     { type: 'action', label: 'Ajouter des images', icon: <ImagePlus size={16} />,
@@ -149,7 +149,7 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
               value={value}
               onChange={e => setValue(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Demander à Jarvis"
+              placeholder="Demander à Assistant"
               rows={1}
               disabled={isStreaming}
               className="flex-1 resize-none bg-transparent text-sm text-text-primary
@@ -208,7 +208,7 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
         </div>
 
         <p className="text-xs text-text-tertiary text-center mt-2">
-          Jarvis peut faire des erreurs. Vérifiez les informations importantes.
+          Assistant peut faire des erreurs. Vérifiez les informations importantes.
         </p>
       </div>
 

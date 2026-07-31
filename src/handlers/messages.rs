@@ -11,8 +11,8 @@ use axum::extract::Json as AxumJson;
 use axum::http::StatusCode;
 
 use crate::{
-    errors::{JarvisError, JarvisResult},
-    middleware::JarvisUser,
+    errors::{AssistantError, AssistantResult},
+    middleware::AssistantUser,
     models::{FeedbackDto, Message, SendMessageDto, SseEvent},
     services::{agentic::AgenticProvider, run_agentic, AgenticEvent, LlmMessage, McpClient, ToolCatalogItem},
     state::AppState,
@@ -29,29 +29,29 @@ struct ConvInfo {
 
 pub async fn send_message(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path(conv_id): Path<Uuid>,
     axum::Json(dto): axum::Json<SendMessageDto>,
-) -> JarvisResult<Sse<BoxStream<'static, Result<Event, Infallible>>>> {
+) -> AssistantResult<Sse<BoxStream<'static, Result<Event, Infallible>>>> {
     if !dto.regenerate && dto.content.trim().is_empty() {
-        return Err(JarvisError::Validation("Le message ne peut pas être vide".into()));
+        return Err(AssistantError::Validation("Le message ne peut pas être vide".into()));
     }
 
     let conv = sqlx::query_as::<_, ConvInfo>(
-        "SELECT id, agent_id, model_id, provider FROM jarvis.conversations WHERE id = $1 AND owner_id = $2",
+        "SELECT id, agent_id, model_id, provider FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
     )
     .bind(conv_id)
     .bind(user.id)
     .fetch_optional(&st.db)
     .await?
-    .ok_or_else(|| JarvisError::NotFound("conversation introuvable".into()))?;
+    .ok_or_else(|| AssistantError::NotFound("conversation introuvable".into()))?;
 
     let model = dto.model.unwrap_or(conv.model_id);
 
     // Get agent system prompt + the tools it is allowed to use.
     let (system_prompt, enabled_tools): (String, Vec<String>) = if let Some(agent_id) = conv.agent_id {
         sqlx::query_as::<_, (String, Vec<String>)>(
-            "SELECT system_prompt, enabled_tools FROM jarvis.agents WHERE id = $1",
+            "SELECT system_prompt, enabled_tools FROM assistant.agents WHERE id = $1",
         )
         .bind(agent_id)
         .fetch_optional(&st.db)
@@ -73,10 +73,10 @@ pub async fn send_message(
         // messages outils qui suivent le dernier message utilisateur), puis relance
         // depuis l'historique qui se termine alors par le dernier message utilisateur.
         sqlx::query(
-            r#"DELETE FROM jarvis.messages
+            r#"DELETE FROM assistant.messages
                WHERE conversation_id = $1
                  AND created_at > COALESCE(
-                     (SELECT MAX(created_at) FROM jarvis.messages WHERE conversation_id = $1 AND role = 'user'),
+                     (SELECT MAX(created_at) FROM assistant.messages WHERE conversation_id = $1 AND role = 'user'),
                      '-infinity'::timestamptz)"#,
         )
         .bind(conv_id)
@@ -85,7 +85,7 @@ pub async fn send_message(
     } else {
         // Persist user message
         sqlx::query(
-            "INSERT INTO jarvis.messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
+            "INSERT INTO assistant.messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
         )
         .bind(conv_id)
         .bind(dto.content.trim())
@@ -96,7 +96,7 @@ pub async fn send_message(
     // Build history
     let history = sqlx::query_as::<_, Message>(
         r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
-           FROM jarvis.messages WHERE conversation_id = $1 ORDER BY created_at ASC"#,
+           FROM assistant.messages WHERE conversation_id = $1 ORDER BY created_at ASC"#,
     )
     .bind(conv_id)
     .fetch_all(&st.db)
@@ -172,7 +172,7 @@ pub async fn send_message(
 
                     let tc = serde_json::Value::Array(tool_calls);
                     match sqlx::query_scalar::<_, Uuid>(
-                        r#"INSERT INTO jarvis.messages
+                        r#"INSERT INTO assistant.messages
                                (conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens)
                            VALUES ($1, 'assistant', $2, $3, $4, $5)
                            RETURNING id"#,
@@ -216,26 +216,26 @@ pub async fn send_message(
     let mut rx = match conv.provider.as_str() {
         "openai" => {
             let svc = st.openai.as_ref()
-                .ok_or_else(|| JarvisError::Validation("OpenAI non configuré. Vérifiez la configuration Jarvis.".into()))?;
+                .ok_or_else(|| AssistantError::Validation("OpenAI non configuré. Vérifiez la configuration Assistant.".into()))?;
             svc.chat_stream(&model, messages).await
-                .map_err(|e| { tracing::error!(error = %e, "OpenAI stream error"); JarvisError::OllamaUnavailable(e.to_string()) })?
+                .map_err(|e| { tracing::error!(error = %e, "OpenAI stream error"); AssistantError::OllamaUnavailable(e.to_string()) })?
         }
         "anthropic" => {
             let svc = st.anthropic.as_ref()
-                .ok_or_else(|| JarvisError::Validation("Anthropic non configuré. Vérifiez la configuration Jarvis.".into()))?;
+                .ok_or_else(|| AssistantError::Validation("Anthropic non configuré. Vérifiez la configuration Assistant.".into()))?;
             svc.chat_stream(&model, messages).await
-                .map_err(|e| { tracing::error!(error = %e, "Anthropic stream error"); JarvisError::OllamaUnavailable(e.to_string()) })?
+                .map_err(|e| { tracing::error!(error = %e, "Anthropic stream error"); AssistantError::OllamaUnavailable(e.to_string()) })?
         }
         "google" => {
             let svc = st.google.as_ref()
-                .ok_or_else(|| JarvisError::Validation("Google AI non configuré. Vérifiez la configuration Jarvis.".into()))?;
+                .ok_or_else(|| AssistantError::Validation("Google AI non configuré. Vérifiez la configuration Assistant.".into()))?;
             svc.chat_stream(&model, messages).await
-                .map_err(|e| { tracing::error!(error = %e, "Google AI stream error"); JarvisError::OllamaUnavailable(e.to_string()) })?
+                .map_err(|e| { tracing::error!(error = %e, "Google AI stream error"); AssistantError::OllamaUnavailable(e.to_string()) })?
         }
         _ => {
             // Default: Ollama
             st.ollama.chat_stream_unified(&model, messages).await
-                .map_err(|e| { tracing::error!(error = %e, "Ollama indisponible"); JarvisError::OllamaUnavailable(e.to_string()) })?
+                .map_err(|e| { tracing::error!(error = %e, "Ollama indisponible"); AssistantError::OllamaUnavailable(e.to_string()) })?
         }
     };
 
@@ -263,7 +263,7 @@ pub async fn send_message(
         }
 
         match sqlx::query_scalar::<_, Uuid>(
-            r#"INSERT INTO jarvis.messages
+            r#"INSERT INTO assistant.messages
                    (conversation_id, role, content, prompt_tokens, completion_tokens)
                VALUES ($1, 'assistant', $2, $3, $4)
                RETURNING id"#,
@@ -297,19 +297,19 @@ pub async fn send_message(
 /// Enregistre un retour 👍/👎 sur un message (ou le retire avec `null`).
 pub async fn set_feedback(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path((conv_id, msg_id)): Path<(Uuid, Uuid)>,
     AxumJson(dto): AxumJson<FeedbackDto>,
-) -> JarvisResult<StatusCode> {
+) -> AssistantResult<StatusCode> {
     // N'autorise que "like"/"dislike"/null.
     if let Some(f) = &dto.feedback {
         if f != "like" && f != "dislike" {
-            return Err(JarvisError::Validation("retour invalide".into()));
+            return Err(AssistantError::Validation("retour invalide".into()));
         }
     }
     let affected = sqlx::query(
-        r#"UPDATE jarvis.messages m SET feedback = $1
-           FROM jarvis.conversations c
+        r#"UPDATE assistant.messages m SET feedback = $1
+           FROM assistant.conversations c
            WHERE m.id = $2 AND m.conversation_id = $3 AND c.id = m.conversation_id AND c.owner_id = $4"#,
     )
     .bind(dto.feedback)
@@ -320,7 +320,7 @@ pub async fn set_feedback(
     .await?
     .rows_affected();
     if affected == 0 {
-        return Err(JarvisError::NotFound("message introuvable".into()));
+        return Err(AssistantError::NotFound("message introuvable".into()));
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -328,12 +328,12 @@ pub async fn set_feedback(
 /// Supprime un message (vérifie l'appartenance via la conversation).
 pub async fn delete_message(
     State(st): State<AppState>,
-    user: JarvisUser,
+    user: AssistantUser,
     Path((conv_id, msg_id)): Path<(Uuid, Uuid)>,
-) -> JarvisResult<StatusCode> {
+) -> AssistantResult<StatusCode> {
     let affected = sqlx::query(
-        r#"DELETE FROM jarvis.messages m
-           USING jarvis.conversations c
+        r#"DELETE FROM assistant.messages m
+           USING assistant.conversations c
            WHERE m.id = $1 AND m.conversation_id = $2 AND c.id = m.conversation_id AND c.owner_id = $3"#,
     )
     .bind(msg_id)
@@ -343,7 +343,7 @@ pub async fn delete_message(
     .await?
     .rows_affected();
     if affected == 0 {
-        return Err(JarvisError::NotFound("message introuvable".into()));
+        return Err(AssistantError::NotFound("message introuvable".into()));
     }
     Ok(StatusCode::NO_CONTENT)
 }

@@ -1,7 +1,7 @@
 use axum::{extract::State, Json};
 use serde::Serialize;
 
-use crate::{errors::JarvisResult, middleware::JarvisUser, state::AppState};
+use crate::{errors::AssistantResult, middleware::AssistantUser, state::AppState};
 
 #[derive(Debug, Serialize)]
 pub struct ModelInfo {
@@ -13,8 +13,8 @@ pub struct ModelInfo {
 
 pub async fn list_models(
     State(st): State<AppState>,
-    _user: JarvisUser,
-) -> JarvisResult<Json<Vec<ModelInfo>>> {
+    _user: AssistantUser,
+) -> AssistantResult<Json<Vec<ModelInfo>>> {
     let default_model = st.ollama.default_model().to_string();
     let mut infos: Vec<ModelInfo> = Vec::new();
 

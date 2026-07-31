@@ -1,13 +1,13 @@
 .PHONY: build build-front dev deb install check fmt clean
 
 build:        ## Compile le binaire du module
-	cargo build --release --bin kubuno-jarvis
+	cargo build --release --bin kubuno-assistant
 
 build-front:  ## Build le bundle frontend (dist/entry.js)
 	cd frontend && npm run build
 
 dev:          ## Lance le module en watch
-	cargo watch -q -c -x 'run --bin kubuno-jarvis'
+	cargo watch -q -c -x 'run --bin kubuno-assistant'
 
 deb:          ## Construit le paquet Debian
 	bash build_deb.sh
@@ -16,7 +16,7 @@ install:      ## Construit et installe le paquet
 	bash build_deb.sh --install
 
 check:        ## cargo check + typecheck frontend
-	cargo check --bin kubuno-jarvis
+	cargo check --bin kubuno-assistant
 	cd frontend && npm run typecheck
 
 fmt:          ## Formate le code

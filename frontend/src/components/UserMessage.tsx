@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Copy, Check, Pencil } from 'lucide-react'
 import { useAuthStore } from '@kubuno/sdk'
-import { useJarvisStore } from '../jarvisStore'
+import { useAssistantStore } from '../assistantStore'
 
 interface Props {
   id:      string
@@ -10,7 +10,7 @@ interface Props {
 
 export default function UserMessage({ id, content }: Props) {
   const user = useAuthStore(s => s.user)
-  const { activeConvId, editUserMessage, isStreaming } = useJarvisStore()
+  const { activeConvId, editUserMessage, isStreaming } = useAssistantStore()
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(content)

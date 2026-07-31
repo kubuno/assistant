@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Settings2, Eye, EyeOff, Save, CheckCircle, XCircle } from 'lucide-react'
-import { jarvisApi, ProviderConfig, UpdateProviderDto } from '../api'
+import { assistantApi, ProviderConfig, UpdateProviderDto } from '../api'
 import { Toggle, Button, Input } from '@ui'
 
 const PROVIDER_LABELS: Record<string, { name: string; color: string; icon: string }> = {
@@ -109,14 +109,14 @@ export default function ProvidersSettings() {
   const [error, setError]         = useState<string | null>(null)
 
   useEffect(() => {
-    jarvisApi.listProviders()
+    assistantApi.listProviders()
       .then(setProviders)
       .catch(() => setError('Impossible de charger les fournisseurs'))
       .finally(() => setLoading(false))
   }, [])
 
   async function handleUpdate(provider: string, dto: UpdateProviderDto) {
-    const updated = await jarvisApi.updateProvider(provider, dto)
+    const updated = await assistantApi.updateProvider(provider, dto)
     setProviders(prev => prev.map(p => p.provider === provider ? { ...p, ...updated } : p))
   }
 
@@ -134,7 +134,7 @@ export default function ProvidersSettings() {
         <h2 className="text-lg font-semibold text-text-primary">Fournisseurs LLM</h2>
       </div>
       <p className="text-sm text-text-secondary mb-5">
-        Configurez les fournisseurs de modèles de langage. Les modifications nécessitent un redémarrage du service Jarvis pour les clés API.
+        Configurez les fournisseurs de modèles de langage. Les modifications nécessitent un redémarrage du service Assistant pour les clés API.
       </p>
       <div className="grid gap-4">
         {providers.map(p => (
