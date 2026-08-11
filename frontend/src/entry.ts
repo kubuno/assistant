@@ -1,7 +1,8 @@
 /** Bundle MODULE assistant — chargé à l'exécution (cf. vite.module.config). */
 import { lazy } from 'react'
-import { RouteRegistry, WaffleAppRegistry, ModuleSettingsRegistry, useSidebarStore, useToolbarStore, SDK_VERSION } from '@kubuno/sdk'
+import { RouteRegistry, WaffleAppRegistry, ModuleSettingsRegistry, useSidebarStore, useToolbarStore, useRightPanelStore, SDK_VERSION } from '@kubuno/sdk'
 import { Bot } from 'lucide-react'
+import AssistantMiniPanel from './AssistantMiniPanel'
 import './index.css'
 import './i18n'
 import AssistantSidebarBody from './components/AssistantSidebarBody'
@@ -27,6 +28,15 @@ export function register() {
     routePrefix: '/assistant',
     SidebarBody: AssistantSidebarBody,
     collapsedBody: true,
+  })
+
+  // Side panel: resume a conversation from anywhere.
+  useRightPanelStore.getState().registerEntry({
+    moduleId:       'assistant',
+    icon:           Bot,
+    label:          'Assistant',
+    panelComponent: AssistantMiniPanel,
+    openPath:       '/assistant',
   })
 
   // Routes

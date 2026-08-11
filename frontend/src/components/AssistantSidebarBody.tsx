@@ -169,7 +169,8 @@ function DateSections({ groups, ...rest }: { groups: ReturnType<typeof groupConv
     <>
       {sections.map(([label, items]) => items.length ? (
         <div key={label} className="mb-3">
-          <div className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest px-3 mb-1">{label}</div>
+          {/* Sidebar section headings: 14px bold, no forced caps, no letter-spacing. */}
+          <div className="text-sm font-bold text-text-secondary px-3 mb-1">{label}</div>
           <SortableList items={items} {...rest} />
         </div>
       ) : null)}
@@ -436,7 +437,7 @@ export default function AssistantSidebarBody({ collapsed = false }: { collapsed?
       <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-0.5">
         {search ? (
           <>
-            <div className="mb-2 px-3 text-[10px] font-bold text-text-tertiary uppercase tracking-widest">Résultats</div>
+            <div className="mb-2 px-3 text-sm font-bold text-text-secondary">Résultats</div>
             <div className="space-y-0.5">
               {filtered.map(item => <ItemRow key={item.conversation.id} item={item} {...handlers} />)}
             </div>
