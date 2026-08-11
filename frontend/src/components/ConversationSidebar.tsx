@@ -76,7 +76,7 @@ function Section({ label, items, activeId, onSelect, onPin, onDelete }: {
   if (!items.length) return null
   return (
     <div className="mb-4">
-      <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide px-3 mb-1">{label}</div>
+      <div className="text-sm font-bold text-text-secondary px-3 mb-1">{label}</div>
       {items.map(item => (
         <ConvItem
           key={item.conversation.id}
