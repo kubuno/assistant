@@ -4,8 +4,19 @@ use reqwest::Client;
 use serde_json::json;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use url::Url;
 
+use super::endpoint::{endpoint, redact};
 use super::provider::{LlmMessage, StreamChunk};
+use super::provider::DEFAULT_MAX_OUTPUT_TOKENS;
+
+/// Header the API accepts for its credential.
+///
+/// This provider also reads the key from a `key=` query parameter, which is what
+/// this client used to do — and a query string ends up in proxy logs, in browser
+/// history when copied, and in any error text that quotes the URL back. The
+/// header carries the same value where nothing echoes it.
+const API_KEY_HEADER: &str = "x-goog-api-key";
 
 #[derive(Debug, Clone)]
 pub struct GoogleService {
@@ -13,6 +24,8 @@ pub struct GoogleService {
     api_key:       String,
     base_url:      String,
     default_model: String,
+    /// Instance-wide answer-length ceiling, applied to every request.
+    max_output_tokens: u32,
 }
 
 impl GoogleService {
@@ -26,7 +39,14 @@ impl GoogleService {
             api_key: api_key.to_string(),
             base_url: base_url.trim_end_matches('/').to_string(),
             default_model: default_model.to_string(),
+            max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
         })
+    }
+
+    /// Applies the instance-wide answer-length ceiling.
+    pub fn with_max_output_tokens(mut self, cap: u32) -> Self {
+        self.max_output_tokens = cap.max(1);
+        self
     }
 
     pub fn default_model(&self) -> &str { &self.default_model }
@@ -38,6 +58,20 @@ impl GoogleService {
             "gemini-1.5-flash".to_string(),
             "gemini-1.5-pro".to_string(),
         ]
+    }
+
+    /// Streaming endpoint for `model`.
+    ///
+    /// `model` is caller-supplied — it comes from the request body, and an
+    /// instance with an empty model allowlist (the default) accepts any string —
+    /// so it is percent-encoded as a single path segment instead of being
+    /// interpolated raw. The credential is NOT in this URL: it goes in a header,
+    /// which is what makes the URL safe to log or to quote in an error.
+    fn stream_url(&self, model: &str) -> Result<Url> {
+        let resource = format!("{model}:streamGenerateContent");
+        let mut url = endpoint(&self.base_url, &["v1beta", "models", &resource])?;
+        url.set_query(Some("alt=sse"));
+        Ok(url)
     }
 
     pub async fn chat_stream(
@@ -57,22 +91,30 @@ impl GoogleService {
             })
         }).collect();
 
-        let mut body = json!({ "contents": contents });
+        let mut body = json!({
+            "contents": contents,
+            "generationConfig": { "maxOutputTokens": self.max_output_tokens },
+        });
         if !system_text.is_empty() {
             body["systemInstruction"] = json!({ "parts": [{ "text": system_text }] });
         }
 
-        let url = format!(
-            "{}/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
-            self.base_url, model, self.api_key
-        );
+        let url = self.stream_url(model)?;
 
-        let resp = self.client.post(&url).json(&body).send().await
+        let resp = self.client
+            .post(url)
+            .header(API_KEY_HEADER, &self.api_key)
+            .json(&body)
+            .send()
+            .await
             .context("connexion Google AI")?;
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body   = resp.text().await.unwrap_or_default();
+            // The body is the provider's text and travels to the client inside a
+            // 503; a provider that echoes the credential it refused must not be
+            // allowed to hand it back through us.
+            let body   = redact(&resp.text().await.unwrap_or_default(), &self.api_key);
             anyhow::bail!("Google AI {status}: {body}");
         }
 
@@ -124,5 +166,60 @@ impl GoogleService {
         });
 
         Ok(rx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::endpoint::shown;
+
+    const KEY: &str = "AIza-cle-tres-secrete-0123456789";
+
+    fn service() -> GoogleService {
+        GoogleService::new("https://fournisseur.example", KEY, "gemini-2.0-flash")
+            .expect("service constructible")
+    }
+
+    #[test]
+    fn the_api_key_is_absent_from_the_request_url() {
+        let url = service().stream_url("gemini-2.0-flash").expect("URL");
+        let text = url.as_str();
+        assert!(!text.contains(KEY), "clé présente dans « {text} »");
+        assert!(!text.contains("key="));
+        assert_eq!(url.query(), Some("alt=sse"));
+        assert_eq!(
+            url.path(),
+            "/v1beta/models/gemini-2.0-flash:streamGenerateContent"
+        );
+    }
+
+    /// The URL as an error or a log line would carry it: still no credential,
+    /// whatever the caller asked for as a model.
+    #[test]
+    fn a_url_put_into_an_error_carries_no_credential() {
+        let svc = service();
+        for model in [
+            "gemini-2.0-flash",
+            "../../autre-endpoint",
+            "modele?key=vole",
+            "modele#tronque",
+            "a/b/c",
+        ] {
+            let url = svc.stream_url(model).expect("URL");
+            let text = shown(&url);
+            assert!(!text.contains(KEY), "clé présente dans « {text} »");
+            assert!(
+                text.starts_with("https://fournisseur.example/v1beta/models/"),
+                "requête détournée vers « {text} »"
+            );
+        }
+    }
+
+    #[test]
+    fn a_model_name_cannot_reach_another_endpoint() {
+        let url = service().stream_url("../../../v1/tokens").expect("URL");
+        let depth = url.path().split('/').filter(|s| !s.is_empty()).count();
+        assert_eq!(depth, 3, "chemin inattendu : {}", url.path());
     }
 }

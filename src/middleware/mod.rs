@@ -37,3 +37,25 @@ impl<S: Send + Sync> FromRequestParts<S> for AssistantUser {
         Ok(AssistantUser { id, role, email })
     }
 }
+
+/// Same as [`AssistantUser`] but rejects any caller whose role is not `admin`.
+///
+/// Instance-wide provider configuration (API keys, endpoints, default models)
+/// is administrator-only: it must never be readable or writable by an ordinary
+/// authenticated user. Hiding the tab in the frontend is not enough — the route
+/// itself has to refuse, otherwise a direct API call bypasses the UI guard.
+#[derive(Debug, Clone)]
+pub struct AssistantAdmin(pub AssistantUser);
+
+#[axum::async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for AssistantAdmin {
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let user = AssistantUser::from_request_parts(parts, state).await?;
+        if user.role != "admin" {
+            return Err(StatusCode::FORBIDDEN);
+        }
+        Ok(AssistantAdmin(user))
+    }
+}

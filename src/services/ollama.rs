@@ -11,12 +11,15 @@ use serde_json::{json, Value};
 use super::agentic::{AgenticProvider, AgenticTurn, ToolOutcome, ToolUse};
 use super::mcp_client::ToolCatalogItem;
 use super::provider::{LlmMessage, StreamChunk as CommonChunk};
+use super::provider::DEFAULT_MAX_OUTPUT_TOKENS;
 
 #[derive(Debug, Clone)]
 pub struct OllamaService {
     client:        Client,
     base_url:      String,
     default_model: String,
+    /// Instance-wide answer-length ceiling, applied to every request.
+    max_output_tokens: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -24,6 +27,8 @@ struct ChatRequest<'a> {
     model:    &'a str,
     messages: &'a [OllamaMessage],
     stream:   bool,
+    /// Engine-side generation options; `num_predict` is the answer-length cap.
+    options:  serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -82,7 +87,15 @@ impl OllamaService {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
             default_model: default_model.to_string(),
+            max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
         })
+    }
+
+    /// Applies the instance-wide answer-length ceiling. Chained at construction
+    /// so no call site has to remember to pass it.
+    pub fn with_max_output_tokens(mut self, cap: u32) -> Self {
+        self.max_output_tokens = cap.max(1);
+        self
     }
 
     pub fn default_model(&self) -> &str {
@@ -132,7 +145,12 @@ impl OllamaService {
         model: &str,
         messages: Vec<OllamaMessage>,
     ) -> Result<mpsc::UnboundedReceiver<StreamChunk>> {
-        let req = ChatRequest { model, messages: &messages, stream: true };
+        let req = ChatRequest {
+            model,
+            messages: &messages,
+            stream: true,
+            options: json!({ "num_predict": self.max_output_tokens }),
+        };
         let response = self.client
             .post(format!("{}/api/chat", self.base_url))
             .json(&req)
@@ -227,6 +245,7 @@ impl AgenticProvider for OllamaService {
             "model":    model,
             "messages": msgs,
             "stream":   false,
+            "options":  { "num_predict": self.max_output_tokens },
         });
         if !tools.is_empty() { body["tools"] = json!(tools); }
 

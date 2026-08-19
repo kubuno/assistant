@@ -15,11 +15,12 @@ pub async fn list_models(
     State(st): State<AppState>,
     _user: AssistantUser,
 ) -> AssistantResult<Json<Vec<ModelInfo>>> {
-    let default_model = st.ollama.default_model().to_string();
+    let providers = st.providers();
+    let default_model = providers.ollama.default_model().to_string();
     let mut infos: Vec<ModelInfo> = Vec::new();
 
     // Ollama models
-    match st.ollama.list_models().await {
+    match providers.ollama.list_models().await {
         Ok(models) => {
             for name in models {
                 let is_default = name == default_model;
@@ -36,7 +37,7 @@ pub async fn list_models(
     }
 
     // OpenAI models
-    if let Some(svc) = &st.openai {
+    if let Some(svc) = &providers.openai {
         for id in svc.list_models().await {
             let is_default = id == svc.default_model();
             infos.push(ModelInfo { id: id.clone(), name: id, provider: "openai".into(), is_default });
@@ -44,7 +45,7 @@ pub async fn list_models(
     }
 
     // Anthropic models
-    if let Some(svc) = &st.anthropic {
+    if let Some(svc) = &providers.anthropic {
         for id in svc.list_models() {
             let is_default = id == svc.default_model();
             infos.push(ModelInfo { id: id.clone(), name: id, provider: "anthropic".into(), is_default });
@@ -52,7 +53,7 @@ pub async fn list_models(
     }
 
     // Google models
-    if let Some(svc) = &st.google {
+    if let Some(svc) = &providers.google {
         for id in svc.list_models() {
             let is_default = id == svc.default_model();
             infos.push(ModelInfo { id: id.clone(), name: id, provider: "google".into(), is_default });

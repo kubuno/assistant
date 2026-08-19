@@ -12,6 +12,7 @@ use axum::http::StatusCode;
 
 use crate::{
     errors::{AssistantError, AssistantResult},
+    handlers::agent_access,
     middleware::AssistantUser,
     models::{FeedbackDto, Message, SendMessageDto, SseEvent},
     services::{agentic::AgenticProvider, run_agentic, AgenticEvent, LlmMessage, McpClient, ToolCatalogItem},
@@ -33,8 +34,16 @@ pub async fn send_message(
     Path(conv_id): Path<Uuid>,
     axum::Json(dto): axum::Json<SendMessageDto>,
 ) -> AssistantResult<Sse<BoxStream<'static, Result<Event, Infallible>>>> {
+    let policy = st.instance();
+
     if !dto.regenerate && dto.content.trim().is_empty() {
         return Err(AssistantError::Validation("Le message ne peut pas être vide".into()));
+    }
+    if dto.content.chars().count() > policy.max_message_chars {
+        return Err(AssistantError::Validation(format!(
+            "Message trop long : {} caractères au maximum sur cette instance.",
+            policy.max_message_chars
+        )));
     }
 
     let conv = sqlx::query_as::<_, ConvInfo>(
@@ -47,18 +56,27 @@ pub async fn send_message(
     .ok_or_else(|| AssistantError::NotFound("conversation introuvable".into()))?;
 
     let model = dto.model.unwrap_or(conv.model_id);
+    // Instance policy: only the models the administrator listed may be used.
+    if !policy.model_allowed(&model) {
+        return Err(AssistantError::Validation(format!(
+            "Modèle non autorisé sur cette instance : {model}"
+        )));
+    }
 
     // Get agent system prompt + the tools it is allowed to use.
-    let (system_prompt, enabled_tools): (String, Vec<String>) = if let Some(agent_id) = conv.agent_id {
-        sqlx::query_as::<_, (String, Vec<String>)>(
-            "SELECT system_prompt, enabled_tools FROM assistant.agents WHERE id = $1",
-        )
-        .bind(agent_id)
-        .fetch_optional(&st.db)
-        .await?
-        .unwrap_or_else(|| (String::new(), Vec::new()))
-    } else {
-        (String::new(), Vec::new())
+    //
+    // The lookup is bound to the caller: owning the conversation is NOT enough to
+    // reach whatever agent id it points at. An agent the user cannot reach — one
+    // that was deleted, or one belonging to another account, which rows written
+    // before this check may still reference — contributes nothing, so the answer
+    // is generated with no agent prompt instead of borrowing (and, through the
+    // model, disclosing) somebody else's `system_prompt`.
+    let (system_prompt, enabled_tools): (String, Vec<String>) = match conv.agent_id {
+        Some(agent_id) => agent_access::load_prompt(&st.db, agent_id, user.id)
+            .await?
+            .map(|a| (a.system_prompt, a.enabled_tools))
+            .unwrap_or_default(),
+        None => (String::new(), Vec::new()),
     };
 
     // Ancre temporelle : sans elle le modèle invente l'année (ex. 2022) en
@@ -93,27 +111,47 @@ pub async fn send_message(
         .await?;
     }
 
-    // Build history
-    let history = sqlx::query_as::<_, Message>(
-        r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
-           FROM assistant.messages WHERE conversation_id = $1 ORDER BY created_at ASC"#,
-    )
-    .bind(conv_id)
-    .fetch_all(&st.db)
-    .await?;
+    // Build history. The instance may cap how far back the model is fed: the
+    // newest N messages are selected, then put back in chronological order, so a
+    // long conversation stops re-billing its whole past on every turn.
+    // `0` keeps the previous behaviour — replay everything.
+    let history = if policy.history_window_messages > 0 {
+        let mut recent = sqlx::query_as::<_, Message>(
+            r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
+               FROM assistant.messages WHERE conversation_id = $1
+               ORDER BY created_at DESC LIMIT $2"#,
+        )
+        .bind(conv_id)
+        .bind(policy.history_window_messages)
+        .fetch_all(&st.db)
+        .await?;
+        recent.reverse();
+        recent
+    } else {
+        sqlx::query_as::<_, Message>(
+            r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
+               FROM assistant.messages WHERE conversation_id = $1 ORDER BY created_at ASC"#,
+        )
+        .bind(conv_id)
+        .fetch_all(&st.db)
+        .await?
+    };
 
     // ── Agentic path: Anthropic + MCP tools ─────────────────────────────────
     // When the provider is Anthropic and tools are available, run the agentic
     // tool-calling loop (discovers tools via the core gateway, lets the model
     // call them, feeds results back). Other providers keep the plain stream.
     // Pick a tool-capable provider (Anthropic, or Ollama as the local default).
+    let providers = st.providers();
     let agentic_provider: Option<Arc<dyn AgenticProvider>> = match conv.provider.as_str() {
-        "anthropic" => st.anthropic.clone().map(|a| a as Arc<dyn AgenticProvider>),
-        "openai"    => st.openai.clone().map(|a| a as Arc<dyn AgenticProvider>),
+        "anthropic" => providers.anthropic.clone().map(|a| a as Arc<dyn AgenticProvider>),
+        "openai"    => providers.openai.clone().map(|a| a as Arc<dyn AgenticProvider>),
         "google"    => None, // tool-calling for Google is a follow-up
-        _           => Some(st.ollama.clone() as Arc<dyn AgenticProvider>),
+        _           => Some(providers.ollama.clone() as Arc<dyn AgenticProvider>),
     };
-    if let Some(provider) = agentic_provider {
+    // Instance policy: tools can be switched off for the whole instance. Skipping
+    // the catalogue lookup means no tool is even offered to the model.
+    if let Some(provider) = agentic_provider.filter(|_| policy.enable_tools) {
         {
             let mcp = McpClient::new(&st.settings.core.url, &st.settings.core.internal_secret);
             let catalog = mcp.list_tools(user.id).await.unwrap_or_else(|e| {
@@ -136,6 +174,7 @@ pub async fn send_message(
                     .collect();
                 let mut rx = run_agentic(
                     provider, mcp, user.id, model, system_prompt, turns, tools,
+                    policy.max_tool_rounds,
                 );
                 let db = st.db.clone();
                 let sse_stream = async_stream::stream! {
@@ -215,26 +254,26 @@ pub async fn send_message(
     // Dispatch to the right provider
     let mut rx = match conv.provider.as_str() {
         "openai" => {
-            let svc = st.openai.as_ref()
+            let svc = providers.openai.as_ref()
                 .ok_or_else(|| AssistantError::Validation("OpenAI non configuré. Vérifiez la configuration Assistant.".into()))?;
             svc.chat_stream(&model, messages).await
                 .map_err(|e| { tracing::error!(error = %e, "OpenAI stream error"); AssistantError::OllamaUnavailable(e.to_string()) })?
         }
         "anthropic" => {
-            let svc = st.anthropic.as_ref()
+            let svc = providers.anthropic.as_ref()
                 .ok_or_else(|| AssistantError::Validation("Anthropic non configuré. Vérifiez la configuration Assistant.".into()))?;
             svc.chat_stream(&model, messages).await
                 .map_err(|e| { tracing::error!(error = %e, "Anthropic stream error"); AssistantError::OllamaUnavailable(e.to_string()) })?
         }
         "google" => {
-            let svc = st.google.as_ref()
+            let svc = providers.google.as_ref()
                 .ok_or_else(|| AssistantError::Validation("Google AI non configuré. Vérifiez la configuration Assistant.".into()))?;
             svc.chat_stream(&model, messages).await
                 .map_err(|e| { tracing::error!(error = %e, "Google AI stream error"); AssistantError::OllamaUnavailable(e.to_string()) })?
         }
         _ => {
             // Default: Ollama
-            st.ollama.chat_stream_unified(&model, messages).await
+            providers.ollama.chat_stream_unified(&model, messages).await
                 .map_err(|e| { tracing::error!(error = %e, "Ollama indisponible"); AssistantError::OllamaUnavailable(e.to_string()) })?
         }
     };

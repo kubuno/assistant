@@ -80,7 +80,10 @@ export interface ModelInfo {
 export interface ProviderConfig {
   provider:      string
   enabled:       boolean
+  /** Masked preview only — the backend never returns the key itself. */
   api_key:       string
+  /** Whether a key is stored, so a form can say so without parsing the mask. */
+  has_api_key:   boolean
   base_url:      string
   default_model: string
 }

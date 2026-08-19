@@ -11,7 +11,9 @@ use axum::{
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::{errors::AssistantResult, middleware::AssistantUser, state::AppState};
+use crate::{
+    errors::AssistantResult, handlers::agent_access, middleware::AssistantUser, state::AppState,
+};
 
 #[derive(serde::Deserialize)]
 pub struct DeltaQuery {
@@ -48,14 +50,18 @@ pub async fn conversations_delta(
             changes.push(json!({ "uuid": id, "kind": "deleted", "change_seq": seq }));
             continue;
         }
+        // The id list above is already owner-scoped; the row fetch repeats the
+        // scope so a change of ownership between the two queries — or a later
+        // edit to the list — can never hand out somebody else's row.
         let conv: Option<Value> = sqlx::query_scalar(
             r#"SELECT to_jsonb(c) FROM (
                    SELECT id, owner_id AS user_id, agent_id, title, model_id AS model, message_count,
                           total_tokens, is_pinned, is_archived, is_trashed, folder_id, position,
                           created_at, updated_at
-                   FROM assistant.conversations WHERE id=$1) c"#,
+                   FROM assistant.conversations WHERE id=$1 AND owner_id=$2) c"#,
         )
         .bind(id)
+        .bind(user.id)
         .fetch_optional(&st.db)
         .await?;
         let Some(conv) = conv else { continue };
@@ -105,9 +111,10 @@ pub async fn folders_delta(
         let folder: Option<Value> = sqlx::query_scalar(
             r#"SELECT to_jsonb(f) FROM (
                    SELECT id, owner_id, name, color, position, created_at, updated_at
-                   FROM assistant.folders WHERE id=$1) f"#,
+                   FROM assistant.folders WHERE id=$1 AND owner_id=$2) f"#,
         )
         .bind(id)
+        .bind(user.id)
         .fetch_optional(&st.db)
         .await?;
         let Some(folder) = folder else { continue };
@@ -123,37 +130,44 @@ pub async fn agents_delta(
     Query(q): Query<DeltaQuery>,
 ) -> AssistantResult<Json<Value>> {
     let limit = q.limit.unwrap_or(200).clamp(1, 500);
-    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(
+    let list_sql = format!(
         r#"SELECT id, change_seq, 'live' AS src FROM assistant.agents
-               WHERE (owner_id=$1 OR is_system=true) AND change_seq>$2
+               WHERE {} AND change_seq>$2
            UNION ALL
            SELECT id, change_seq, 'tomb' AS src FROM assistant.agent_tombstones
                WHERE owner_id=$1 AND change_seq>$2
            ORDER BY change_seq LIMIT $3"#,
-    )
-    .bind(user.id)
-    .bind(q.cursor)
-    .bind(limit)
-    .fetch_all(&st.db)
-    .await?;
+        agent_access::VISIBLE_SQL,
+    );
+    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(&list_sql)
+        .bind(user.id)
+        .bind(q.cursor)
+        .bind(limit)
+        .fetch_all(&st.db)
+        .await?;
     let has_more = rows.len() as i64 == limit;
     let new_cursor = rows.last().map(|r| r.1).unwrap_or(q.cursor);
+    // Same scope as the id list, repeated on the row itself: this payload carries
+    // `system_prompt`, so it must never be reachable by id alone.
+    let row_sql = format!(
+        r#"SELECT to_jsonb(a) FROM (
+               SELECT id, name, description, system_prompt, preferred_model AS default_model,
+                      avatar_emoji, avatar_color, prompt_suggestions, is_system,
+                      owner_id AS created_by, created_at, updated_at
+               FROM assistant.agents WHERE {}) a"#,
+        agent_access::REACHABLE_SQL,
+    );
     let mut changes = Vec::with_capacity(rows.len());
     for (id, seq, src) in &rows {
         if src == "tomb" {
             changes.push(json!({ "uuid": id, "kind": "deleted", "change_seq": seq }));
             continue;
         }
-        let agent: Option<Value> = sqlx::query_scalar(
-            r#"SELECT to_jsonb(a) FROM (
-                   SELECT id, name, description, system_prompt, preferred_model AS default_model,
-                          avatar_emoji, avatar_color, prompt_suggestions, is_system,
-                          owner_id AS created_by, created_at, updated_at
-                   FROM assistant.agents WHERE id=$1) a"#,
-        )
-        .bind(id)
-        .fetch_optional(&st.db)
-        .await?;
+        let agent: Option<Value> = sqlx::query_scalar(&row_sql)
+            .bind(id)
+            .bind(user.id)
+            .fetch_optional(&st.db)
+            .await?;
         let Some(agent) = agent else { continue };
         changes.push(json!({ "uuid": id, "kind": "modified", "change_seq": seq, "agent": agent }));
     }

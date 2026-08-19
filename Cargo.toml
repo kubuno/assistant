@@ -30,6 +30,8 @@ thiserror          = { workspace = true }
 anyhow             = { workspace = true }
 uuid               = { workspace = true }
 chrono             = { workspace = true }
+# Percent-encoding of the path segments built from a request value (model id).
+url                = { workspace = true }
 bytes              = { workspace = true }
 futures            = { workspace = true }
 rand               = { workspace = true }

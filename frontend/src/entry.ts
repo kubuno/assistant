@@ -6,6 +6,7 @@ import AssistantMiniPanel from './AssistantMiniPanel'
 import './index.css'
 import './i18n'
 import AssistantSidebarBody from './components/AssistantSidebarBody'
+import { registerAssistantAdmin } from './admin/AssistantAdminPanel'
 
 export const sdkVersion = SDK_VERSION
 
@@ -16,6 +17,10 @@ export function register() {
 
   // The header gear button opens the per-user Assistant settings while in /assistant.
   ModuleSettingsRegistry.register('assistant')
+
+  // Instance administration (core console ▸ Modules ▸ Assistant): provider
+  // credentials, which a generated form cannot express.
+  registerAssistantAdmin()
 
   useToolbarStore.getState().register({
     moduleId:    'assistant',

@@ -23,8 +23,9 @@ use uuid::Uuid;
 use super::mcp_client::{McpClient, ToolCatalogItem};
 use super::provider::LlmMessage;
 
-/// Safety bound on tool rounds per user turn.
-const MAX_ITERS: usize = 6;
+/// Safety bound on tool rounds per user turn, used when no instance policy has
+/// been read yet. The administrator's value overrides it (see `run_agentic`).
+const DEFAULT_MAX_ITERS: usize = 6;
 
 /// One tool the model asked to call.
 #[derive(Debug, Clone)]
@@ -82,6 +83,8 @@ pub fn run_agentic(
     system_text: String,
     turns: Vec<LlmMessage>,
     tools: Vec<ToolCatalogItem>,
+    // Instance-wide ceiling on tool round-trips for this single answer.
+    max_rounds: usize,
 ) -> mpsc::UnboundedReceiver<AgenticEvent> {
     let (tx, rx) = mpsc::unbounded_channel::<AgenticEvent>();
 
@@ -105,7 +108,8 @@ pub fn run_agentic(
         let mut total_in  = 0i32;
         let mut total_out = 0i32;
 
-        for _ in 0..MAX_ITERS {
+        let rounds = if max_rounds == 0 { DEFAULT_MAX_ITERS } else { max_rounds };
+        for _ in 0..rounds {
             let turn = match provider.complete_once(&model, &system_text, &messages, &prov_tools).await {
                 Ok(t)  => t,
                 Err(e) => { let _ = tx.send(AgenticEvent::Error(e.to_string())); return; }

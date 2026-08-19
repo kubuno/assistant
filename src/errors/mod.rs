@@ -11,6 +11,12 @@ pub enum AssistantError {
     NotFound(String),
     #[error("Données invalides: {0}")]
     Validation(String),
+    /// A provider could not be reached or refused the call.
+    ///
+    /// CAUTION: the message is rendered verbatim into the 503 the client receives, so
+    /// whatever a provider client puts in here is PUBLIC: never a URL carrying a
+    /// credential, and never a provider body that has not gone through
+    /// `services::endpoint::redact`.
     #[error("Ollama indisponible: {0}")]
     OllamaUnavailable(String),
     #[error("Erreur base de données")]
