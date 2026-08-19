@@ -1,6 +1,7 @@
 import { Sparkles, Copy, Check, ThumbsUp, ThumbsDown, RotateCcw, Trash2, Share2, MoreHorizontal, Volume2, Split } from 'lucide-react'
 import { useState } from 'react'
-import { MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
+import { ConfirmDialog, MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
+import { useConfirm } from '@kubuno/sdk'
 import MarkdownRenderer from './MarkdownRenderer'
 import ToolCallCard from './ToolCallCard'
 import { useAssistantStore } from '../assistantStore'
@@ -43,6 +44,9 @@ export default function AssistantMessage({ content, streaming, toolCalls, messag
     } catch { /* indisponible */ }
   }
   const iconBtn = 'flex items-center justify-center w-7 h-7 rounded-lg transition-colors'
+  // Deleting a message is irreversible: confirm first (shared dialog, never a
+  // browser one).
+  const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm()
 
   const moreItems: MenuItem[] = [
     ...(createdAt ? [{ type: 'label' as const, text: fmtDateTime(createdAt) }] : []),
@@ -50,7 +54,15 @@ export default function AssistantMessage({ content, streaming, toolCalls, messag
     { type: 'action', label: 'Lire à haute voix', icon: <Volume2 size={16} />, onClick: speak },
     ...(messageId && activeConvId
       ? [{ type: 'separator' as const },
-         { type: 'action' as const, label: 'Supprimer', icon: <Trash2 size={16} />, danger: true, onClick: () => deleteMessage(activeConvId, messageId) }]
+         { type: 'action' as const, label: 'Supprimer', icon: <Trash2 size={16} />, danger: true, onClick: async () => {
+             const ok = await confirm({
+               title: 'Supprimer le message',
+               message: 'Supprimer définitivement ce message ? Cette action est irréversible.',
+               confirmLabel: 'Supprimer',
+               variant: 'danger',
+             })
+             if (ok) deleteMessage(activeConvId, messageId)
+           } }]
       : []),
   ]
 
@@ -109,6 +121,9 @@ export default function AssistantMessage({ content, streaming, toolCalls, messag
           </div>
         )}
       </div>
+      {confirmState && (
+        <ConfirmDialog {...confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
+      )}
     </div>
   )
 }

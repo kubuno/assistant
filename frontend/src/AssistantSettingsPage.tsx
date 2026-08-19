@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import {
   ArrowLeft, Sparkles, Bot,
-  Plus, Pencil, Trash2, Save, CheckCircle, XCircle, Check,
-  Eye, EyeOff, AlertCircle, ExternalLink,
+  Plus, Pencil, Trash2, Save, XCircle, Check,
+  AlertCircle, ExternalLink,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@kubuno/sdk'
-import { assistantApi, type AssistantAgent, type ProviderConfig, type UpdateProviderDto } from './api'
+import { assistantApi, type AssistantAgent } from './api'
 import { Toggle, Button, Input, Textarea, Radio, useSaveShortcut} from '@ui'
 import { useModulePrefs } from './userPrefs'
 
@@ -161,152 +160,9 @@ function PreferencesTab() {
   )
 }
 
-// ── Admin-only providers tab (instance-wide secrets: API keys / endpoints) ──────
-
-const PROVIDER_META: Record<string, { name: string; colorClass: string; icon: string }> = {
-  ollama:    { name: 'Ollama',        colorClass: 'bg-purple-100 text-purple-700',   icon: '🦙' },
-  openai:    { name: 'OpenAI',        colorClass: 'bg-emerald-100 text-emerald-700', icon: '⚡' },
-  anthropic: { name: 'Anthropic',     colorClass: 'bg-orange-100 text-orange-700',   icon: '🤖' },
-  google:    { name: 'Google Gemini', colorClass: 'bg-blue-100 text-blue-700',       icon: '✦' },
-}
-
-function ProviderCard({ config, onUpdate }: { config: ProviderConfig; onUpdate: (p: string, d: UpdateProviderDto) => Promise<void> }) {
-  const { t } = useTranslation('assistant')
-  const [showKey,   setShowKey]   = useState(false)
-  const [apiKey,    setApiKey]    = useState('')
-  const [baseUrl,   setBaseUrl]   = useState(config.base_url)
-  const [defModel,  setDefModel]  = useState(config.default_model)
-  const [enabled,   setEnabled]   = useState(config.enabled)
-  const [saving,    setSaving]    = useState(false)
-  const [saved,     setSaved]     = useState(false)
-  const [err,       setErr]       = useState<string | null>(null)
-
-  const meta = PROVIDER_META[config.provider] ?? { name: config.provider, colorClass: 'bg-surface-2 text-text-secondary', icon: '🔧' }
-
-  async function save() {
-    setSaving(true); setErr(null)
-    try {
-      const dto: UpdateProviderDto = { enabled, base_url: baseUrl, default_model: defModel }
-      if (apiKey) dto.api_key = apiKey
-      await onUpdate(config.provider, dto)
-      setApiKey('')
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch {
-      setErr(t('assistant_save_error'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="border border-border rounded-xl p-5 bg-white">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <span className="text-xl leading-none">{meta.icon}</span>
-          <div>
-            <p className="font-semibold text-sm text-text-primary">{meta.name}</p>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${meta.colorClass}`}>
-              {config.provider}
-            </span>
-          </div>
-        </div>
-        <Toggle checked={enabled} onChange={e => setEnabled(e.target.checked)} size="sm" />
-      </div>
-
-      <div className="space-y-3">
-        {config.provider !== 'ollama' && (
-          <div>
-            <label className="text-xs font-medium text-text-secondary block mb-1">{t('assistant_api_key')}</label>
-            <div className="relative">
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder={config.api_key || t('assistant_api_key_placeholder')}
-                className="w-full pr-9 pl-3 py-2 text-sm border border-border rounded-lg
-                           bg-surface-1 focus:outline-none focus:border-primary"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(v => !v)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
-              >
-                {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
-          </div>
-        )}
-
-        <Input
-          label={t('assistant_base_url')}
-          type="text"
-          value={baseUrl}
-          onChange={e => setBaseUrl(e.target.value)}
-        />
-
-        <Input
-          label={t('assistant_default_model')}
-          type="text"
-          value={defModel}
-          onChange={e => setDefModel(e.target.value)}
-        />
-      </div>
-
-      {err && (
-        <p className="mt-2 text-xs text-danger flex items-center gap-1">
-          <AlertCircle size={12} /> {err}
-        </p>
-      )}
-
-      <div className="mt-4 flex justify-end">
-        <Button onClick={save} disabled={saving}>
-          {saved ? <CheckCircle size={14} /> : <Save size={14} />}
-          {saved ? t('assistant_saved') : saving ? t('assistant_saving') : t('common_save')}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function ProvidersTab() {
-  const { t } = useTranslation('assistant')
-  const [providers, setProviders] = useState<ProviderConfig[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState<string | null>(null)
-
-  useEffect(() => {
-    assistantApi.listProviders()
-      .then(setProviders)
-      .catch(() => setError(t('assistant_providers_load_error')))
-      .finally(() => setLoading(false))
-  }, [t])
-
-  async function handleUpdate(provider: string, dto: UpdateProviderDto) {
-    const updated = await assistantApi.updateProvider(provider, dto)
-    setProviders(prev => prev.map(p => p.provider === provider ? { ...p, ...updated } : p))
-  }
-
-  if (loading) return <div className="py-8 text-center text-sm text-text-tertiary">{t('common_loading')}</div>
-  if (error)   return (
-    <div className="flex items-center gap-2 text-danger text-sm p-4">
-      <XCircle size={16} /> {error}
-    </div>
-  )
-
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-text-secondary">
-        {t('assistant_providers_help')}
-      </p>
-      <div className="grid gap-4">
-        {providers.map(p => (
-          <ProviderCard key={p.provider} config={p} onUpdate={handleUpdate} />
-        ))}
-      </div>
-    </div>
-  )
-}
+// Provider credentials are NOT here any more: they are instance-wide secrets, so
+// they live in the core admin console (Modules ▸ Assistant), not on a page about
+// one user's own preferences. See `admin/AssistantAdminPanel.tsx`.
 
 // ── Agents tab (per-user custom agents) ──────────────────────────────────────────
 
@@ -592,21 +448,17 @@ function AboutTab() {
 
 // ── Main page (mail-style breadcrumb + tab bar) ─────────────────────────────────
 
-type Tab = 'preferences' | 'agents' | 'providers' | 'about'
+type Tab = 'preferences' | 'agents' | 'about'
 
 export default function AssistantSettingsPage() {
   const { t } = useTranslation('assistant')
-  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
   const [tab, setTab] = useState<Tab>('preferences')
 
-  // The providers tab holds instance-wide secrets (API keys) → admin-only.
-  const tabs: { id: Tab; label: string; adminOnly?: boolean }[] = [
+  const visibleTabs: { id: Tab; label: string }[] = [
     { id: 'preferences', label: t('assistant_tab_preferences', { defaultValue: 'Préférences' }) },
     { id: 'agents',      label: t('assistant_tab_agents', { defaultValue: 'Agents' }) },
-    { id: 'providers',   label: t('assistant_tab_providers', { defaultValue: 'Fournisseurs' }), adminOnly: true },
     { id: 'about',       label: t('assistant_tab_about', { defaultValue: 'À propos' }) },
   ]
-  const visibleTabs = tabs.filter(tb => !tb.adminOnly || isAdmin)
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
@@ -639,7 +491,6 @@ export default function AssistantSettingsPage() {
         <div className="max-w-3xl mx-auto px-8 py-6">
           {tab === 'preferences' && <PreferencesTab />}
           {tab === 'agents'      && <AgentsTab />}
-          {tab === 'providers'   && isAdmin && <ProvidersTab />}
           {tab === 'about'       && <AboutTab />}
         </div>
       </div>

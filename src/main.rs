@@ -1,15 +1,15 @@
 use anyhow::{Context, Result};
 use kubuno_assistant::{
-    config::Settings,
+    config::{InstanceConfig, Settings},
     router,
-    services::{AnthropicService, GoogleService, OllamaService, OpenAiService},
+    services::{registry::ProviderSet, OllamaService},
     state::AppState,
 };
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 // ── CLI dispatch ──────────────────────────────────────────────────────────────
@@ -126,6 +126,67 @@ struct Manifest {
     events:        Option<ManifestEvents>,
     #[serde(default)]
     cli_commands:  Vec<serde_json::Value>,
+    /// Declarative instance settings, rendered by the core's generic admin form.
+    #[serde(default)]
+    settings:      Vec<SettingDefRaw>,
+    /// Pages the admin panel is split into (`[[setting_groups]]`).
+    #[serde(default)]
+    setting_groups: Vec<SettingGroupRaw>,
+}
+
+/// One `[[setting_groups]]` entry of module.toml, forwarded verbatim. `id` is a
+/// STABLE, UNTRANSLATED slug: it travels in the URL of the admin page.
+#[derive(Deserialize, serde::Serialize)]
+struct SettingGroupRaw {
+    id:          String,
+    label:       String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    position:    Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
+/// One `[[settings]]` entry from module.toml, forwarded verbatim. The bounds are
+/// part of the payload so the core's write path enforces them too — a console can
+/// be bypassed, a server-side check cannot.
+#[derive(Deserialize, serde::Serialize)]
+struct SettingDefRaw {
+    key:         String,
+    scope:       String,
+    #[serde(rename = "type")]
+    value_type:  String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    values:      Option<serde_json::Value>,
+    default:     serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    label:       Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    category:    Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group:       Option<String>,
+    #[serde(default)]
+    public:      bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    advanced:    bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    risk:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min:         Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max:         Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unit:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    placeholder: Option<String>,
+    /// The `string` value is a LIST, one entry per line -> textarea.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    multiline:   bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    depends_on:  Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -166,6 +227,49 @@ fn load_manifest() -> Option<Manifest> {
     toml::from_str::<Manifest>(&content)
         .map_err(|e| tracing::error!(path = %path.display(), error = %e, "module.toml invalide"))
         .ok()
+}
+
+// ── Réglages d'instance : effets de bord ───────────────────────────────────
+
+/// Whether two settings snapshots would produce the SAME provider set.
+///
+/// Only these two fields reach the constructors, so comparing them avoids
+/// rebuilding four HTTP clients — and dropping their connection pools — once a
+/// minute for nothing.
+fn same_policy(a: &InstanceConfig, b: &InstanceConfig) -> bool {
+    a.allow_cloud_providers == b.allow_cloud_providers
+        && a.max_output_tokens == b.max_output_tokens
+}
+
+/// Deletes conversations untouched for longer than the instance keeps them.
+///
+/// Age is counted from the LAST activity, not from creation: a conversation
+/// somebody still uses is not old. Messages follow through the foreign key, and
+/// the delta tombstones are written by the table's own trigger, so a client that
+/// synchronises learns about the removal. `0` = kept forever.
+async fn purge_expired_conversations(state: &AppState) {
+    let days = state.instance().conversation_retention_days;
+    if days <= 0 {
+        return;
+    }
+    match sqlx::query(
+        "DELETE FROM assistant.conversations \
+         WHERE updated_at < NOW() - ($1::int * INTERVAL '1 day')",
+    )
+    .bind(days as i32)
+    .execute(&state.db)
+    .await
+    {
+        Ok(res) if res.rows_affected() > 0 => {
+            tracing::info!(
+                deleted = res.rows_affected(),
+                retention_days = days,
+                "Purge des conversations expirées"
+            );
+        }
+        Ok(_) => {}
+        Err(e) => tracing::error!(error = %e, "Purge des conversations expirées"),
+    }
 }
 
 // ── Point d'entrée ─────────────────────────────────────────────────────────
@@ -234,52 +338,87 @@ async fn main() -> Result<()> {
             .context("Migrations")?;
     }
 
-    // Service Ollama (always initialized; may not be reachable if ollama.enabled = false)
-    let ollama = Arc::new(
+    // Local engine as built from the deploy config. It is the fallback the live
+    // provider set falls back to when a stored row cannot be turned into a
+    // working service; building it here means the failure is loud at start-up.
+    let boot_local = Arc::new(
         OllamaService::new(
             &settings.ollama.url,
             &settings.ollama.default_model,
             settings.ollama.timeout_secs,
         )
-        .context("Initialisation OllamaService")?,
+        .context("Initialisation du moteur local")?,
     );
 
-    // Optional cloud providers (loaded from DB at startup; can be updated via API)
-    let openai = if settings.providers.openai.enabled && !settings.providers.openai.api_key.is_empty() {
-        Some(Arc::new(OpenAiService::new(
-            &settings.providers.openai.base_url,
-            &settings.providers.openai.api_key,
-            &settings.providers.openai.default_model,
-        ).context("Initialisation OpenAiService")?))
-    } else { None };
+    let http = Client::new();
 
-    let anthropic = if settings.providers.anthropic.enabled && !settings.providers.anthropic.api_key.is_empty() {
-        Some(Arc::new(AnthropicService::new(
-            &settings.providers.anthropic.base_url,
-            &settings.providers.anthropic.api_key,
-            &settings.providers.anthropic.default_model,
-        ).context("Initialisation AnthropicService")?))
-    } else { None };
+    // Admin-editable instance settings. A core that is not up yet leaves the
+    // compiled defaults in place; the refresher below picks them up later.
+    let instance = kubuno_assistant::config::fetch_instance(
+        &http, &settings.core.url, &settings.core.internal_secret,
+    )
+    .await
+    .unwrap_or_default();
 
-    let google = if settings.providers.google.enabled && !settings.providers.google.api_key.is_empty() {
-        Some(Arc::new(GoogleService::new(
-            &settings.providers.google.base_url,
-            &settings.providers.google.api_key,
-            &settings.providers.google.default_model,
-        ).context("Initialisation GoogleService")?))
-    } else { None };
+    // Providers come from `assistant.provider_config`, narrowed by the instance
+    // policy. Built before the server accepts a request so the first message
+    // already sees what the administrator configured.
+    let providers = ProviderSet::load(&pool, &settings, &instance, &boot_local).await;
 
     let state = AppState {
         db:        pool,
         settings:  Arc::new(settings.clone()),
-        ollama,
-        openai,
-        anthropic,
-        google,
+        instance:  Arc::new(RwLock::new(instance)),
+        providers: Arc::new(RwLock::new(providers)),
+        boot_local,
     };
 
+    // Refresh the instance settings every 60s so an admin edit takes effect
+    // without a restart, and rebuild the providers with them: the answer-length
+    // ceiling and the remote-provider policy are both applied at construction.
+    {
+        let http_r  = http.clone();
+        let state_r = state.clone();
+        let core_url = settings.core.url.clone();
+        let secret   = settings.core.internal_secret.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                if let Some(fresh) =
+                    kubuno_assistant::config::fetch_instance(&http_r, &core_url, &secret).await
+                {
+                    let changed = match state_r.instance.write() {
+                        Ok(mut guard) => {
+                            let differs = !same_policy(&guard, &fresh);
+                            *guard = fresh;
+                            differs
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Réglages d'instance non mis à jour");
+                            false
+                        }
+                    };
+                    if changed {
+                        state_r.reload_providers().await;
+                    }
+                }
+            }
+        });
+    }
+
+    // Conversation retention. Hourly rather than on a timer per conversation:
+    // the setting is a ceiling on age, not a promise about the minute.
+    {
+        let state_r = state.clone();
+        tokio::spawn(async move {
+            loop {
+                purge_expired_conversations(&state_r).await;
+                tokio::time::sleep(Duration::from_secs(3600)).await;
+            }
+        });
+    }
+
     // Enregistrement auprès du core
-    let http = Client::new();
     register_with_core(&http, &settings).await;
 
     // Heartbeat toutes les 30s
@@ -377,6 +516,14 @@ async fn register_with_core(http: &Client, settings: &Settings) {
     let settings_path = manifest
         .as_ref()
         .and_then(|m| m.module.settings_path.clone());
+    let settings_schema: Vec<Value> = manifest
+        .as_ref()
+        .map(|m| m.settings.iter().map(|s| serde_json::to_value(s).unwrap_or(Value::Null)).collect())
+        .unwrap_or_default();
+    let setting_groups: Vec<Value> = manifest
+        .as_ref()
+        .map(|m| m.setting_groups.iter().map(|g| serde_json::to_value(g).unwrap_or(Value::Null)).collect())
+        .unwrap_or_default();
 
     let payload = json!({
         "module_id":         "assistant",
@@ -389,6 +536,8 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         "subscribed_events": subscribed_events,
         "cli_commands":      cli_commands,
         "settings_path":     settings_path,
+        "settings_schema":   settings_schema,
+        "setting_groups":    setting_groups,
     });
 
     for attempt in 1u32.. {

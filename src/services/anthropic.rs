@@ -9,6 +9,8 @@ use tokio::sync::mpsc;
 use axum::async_trait;
 
 use super::agentic::{AgenticProvider, AgenticTurn, ToolOutcome, ToolUse};
+use super::endpoint::redact;
+use super::provider::DEFAULT_MAX_OUTPUT_TOKENS;
 use super::mcp_client::ToolCatalogItem;
 use super::provider::{LlmMessage, StreamChunk};
 
@@ -20,6 +22,9 @@ pub struct AnthropicService {
     api_key:       String,
     base_url:      String,
     default_model: String,
+    /// Instance-wide answer-length ceiling, applied to every request. Replaces
+    /// the 4096 this service used to hard-code.
+    max_output_tokens: u32,
 }
 
 #[derive(Deserialize)]
@@ -40,7 +45,14 @@ impl AnthropicService {
             api_key: api_key.to_string(),
             base_url: base_url.trim_end_matches('/').to_string(),
             default_model: default_model.to_string(),
+            max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
         })
+    }
+
+    /// Applies the instance-wide answer-length ceiling.
+    pub fn with_max_output_tokens(mut self, cap: u32) -> Self {
+        self.max_output_tokens = cap.max(1);
+        self
     }
 
     pub fn default_model(&self) -> &str { &self.default_model }
@@ -72,7 +84,7 @@ impl AnthropicService {
 
         let mut body = json!({
             "model":      model,
-            "max_tokens": 4096,
+            "max_tokens": self.max_output_tokens,
             "messages":   turns,
             "stream":     true,
         });
@@ -90,7 +102,7 @@ impl AnthropicService {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body   = resp.text().await.unwrap_or_default();
+            let body   = redact(&resp.text().await.unwrap_or_default(), &self.api_key);
             anyhow::bail!("Anthropic {status}: {body}");
         }
 
@@ -186,7 +198,7 @@ impl AgenticProvider for AnthropicService {
     ) -> Result<AgenticTurn> {
         let mut body = json!({
             "model":      model,
-            "max_tokens": 4096,
+            "max_tokens": self.max_output_tokens,
             "messages":   messages,
         });
         if !system.is_empty() { body["system"] = json!(system); }
@@ -201,7 +213,7 @@ impl AgenticProvider for AnthropicService {
             .context("connexion Anthropic")?;
         if !resp.status().is_success() {
             let status = resp.status();
-            let text   = resp.text().await.unwrap_or_default();
+            let text   = redact(&resp.text().await.unwrap_or_default(), &self.api_key);
             anyhow::bail!("Anthropic {status}: {text}");
         }
 

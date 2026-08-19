@@ -54,3 +54,126 @@ usage       = "kubuno assistant:providers"
 name        = "agents"
 description = "Lister les agents Assistant disponibles"
 usage       = "kubuno assistant:agents"
+
+# ── Réglages d'instance (console d'administration ▸ Modules ▸ Assistant) ───────
+# Rendus par le formulaire générique du core. Les identifiants des fournisseurs
+# ne sont PAS ici : ce sont des secrets, ils vivent dans la table du module et
+# passent par la section « Fournisseurs » du panneau.
+
+[[setting_groups]]
+id          = "availability"
+label       = "Disponibilité et modèles"
+icon        = "Cpu"
+position    = 1
+description  = "Qui peut utiliser quoi : moteurs distants, modèles autorisés, agents personnalisés."
+
+[[settings]]
+key         = "allow_cloud_providers"
+scope       = "global"
+type        = "bool"
+group       = "availability"
+default     = true
+risk        = "warning"
+label       = "Autoriser les moteurs distants"
+description = "Si désactivé, l'instance n'utilise plus que le moteur qu'elle héberge : les fournisseurs distants ne sont plus proposés, plus listés, et une conversation qui en demande un est refusée. Aucune donnée ne sort alors du serveur."
+
+[[settings]]
+key         = "allowed_models"
+scope       = "global"
+type        = "string"
+group       = "availability"
+default     = ""
+multiline   = true
+placeholder = "llama3.1:8b\nmistral-small"
+label       = "Modèles autorisés"
+description = "Un identifiant de modèle par ligne. Tant que la liste est vide, tous les modèles proposés par les fournisseurs actifs sont utilisables. La comparaison ignore la casse ; les lignes commençant par « # » sont ignorées."
+
+[[settings]]
+key         = "allow_custom_agents"
+scope       = "global"
+type        = "bool"
+group       = "availability"
+default     = true
+label       = "Autoriser les agents personnalisés"
+description = "Si désactivé, les utilisateurs ne peuvent plus créer d'agent : seuls ceux livrés avec le module restent disponibles. Les agents déjà créés continuent de fonctionner."
+
+[[setting_groups]]
+id          = "limits"
+label       = "Limites de conversation"
+icon        = "Gauge"
+position    = 2
+description  = "Plafonds appliqués à chaque échange : taille des messages, contexte rejoué, longueur des réponses, outils."
+
+[[settings]]
+key         = "max_message_chars"
+scope       = "global"
+type        = "int"
+group       = "limits"
+default     = 32000
+min         = 100
+max         = 2000000
+label       = "Longueur maximale d'un message"
+description = "Nombre de caractères qu'un utilisateur peut envoyer en une fois. Au-delà, le message est refusé avant tout appel au modèle."
+
+[[settings]]
+key         = "history_window_messages"
+scope       = "global"
+type        = "int"
+group       = "limits"
+default     = 0
+min         = 0
+max         = 10000
+label       = "Messages d'historique rejoués"
+description = "Nombre de messages passés renvoyés au modèle à chaque tour. 0 = toute la conversation. Une valeur basse réduit fortement le coût et la latence des longues conversations."
+
+[[settings]]
+key         = "max_output_tokens"
+scope       = "global"
+type        = "int"
+group       = "limits"
+default     = 4096
+min         = 128
+max         = 200000
+label       = "Longueur maximale d'une réponse (jetons)"
+description = "Plafond demandé au fournisseur pour chaque réponse. S'applique aux quatre moteurs pris en charge."
+
+[[settings]]
+key         = "enable_tools"
+scope       = "global"
+type        = "bool"
+group       = "limits"
+default     = true
+label       = "Autoriser l'appel d'outils"
+description = "Si désactivé, aucun outil n'est présenté au modèle et l'exécution d'un outil est refusée, y compris après confirmation de l'utilisateur."
+
+[[settings]]
+key         = "max_tool_rounds"
+scope       = "global"
+type        = "int"
+group       = "limits"
+default     = 6
+min         = 1
+max         = 30
+depends_on  = "enable_tools"
+label       = "Tours d'outils maximum par réponse"
+description = "Nombre d'allers-retours d'outils qu'une seule réponse peut enchaîner avant que la boucle ne s'arrête."
+
+[[setting_groups]]
+id          = "retention"
+label       = "Conservation"
+icon        = "Archive"
+position    = 3
+description  = "Durée de vie des conversations sur l'instance."
+
+[[settings]]
+key         = "conversation_retention_days"
+scope       = "global"
+type        = "int"
+group       = "retention"
+default     = 0
+min         = 0
+max         = 3650
+unit        = "jours"
+risk        = "danger"
+label       = "Conservation des conversations"
+description = "Une conversation sans activité depuis plus longtemps est supprimée, avec ses messages. L'ancienneté part de la DERNIÈRE activité, pas de la création. 0 = conservation illimitée. Le balayage a lieu toutes les heures."

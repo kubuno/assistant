@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Plus, Search, Library, Pin, Trash2, Pencil, FolderPlus, FolderInput, ChevronRight, Folder, Check, X, Share2, UserPlus, Archive } from 'lucide-react'
-import { MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
-import { prompt } from '@kubuno/sdk'
+import { ConfirmDialog, MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
+import { prompt, useConfirm } from '@kubuno/sdk'
 import { useAssistantStore } from '../assistantStore'
 import { isToday, isYesterday, subDays, isAfter } from 'date-fns'
 import { hashTo, fromHash } from '../hashRoute'
@@ -36,7 +36,7 @@ const hoverBg = (color: string) => ({
  * Row hover tint. Same value as the core's SidebarNavItem so this module's rows
  * highlight exactly like mail's — the left panel must feel like ONE sidebar.
  */
-const ROW_HOVER = 'color-mix(in srgb, var(--color-primary) 12%, white)'
+const ROW_HOVER = 'var(--kb-sidebar-hover, #e8eaed)'  // host-owned token: one hover colour product-wide
 
 
 function actionProps(action: () => void) {
@@ -315,6 +315,10 @@ export default function AssistantSidebarBody({ collapsed = false }: { collapsed?
 
   const location = useLocation()
   const navigate = useNavigate()
+  // Deleting a conversation (or a folder) is irreversible and used to fire on a
+  // single click, with no confirmation at all. Project rule: the shared
+  // ConfirmDialog, never a browser dialog.
+  const { confirm, confirmState, handleConfirm, handleCancel } = useConfirm()
 
   // The selected conversation is addressable: `/assistant/#conversation/<id>`.
   // Reading it back from the hash makes direct links and the Back button work.
@@ -342,7 +346,18 @@ export default function AssistantSidebarBody({ collapsed = false }: { collapsed?
     activeId: activeConvId, folders,
     onSelect: id => { setActiveConv(id); setSearch('') },
     onPin: id => togglePin(id),
-    onDelete: id => deleteConversation(id),
+    onDelete: async id => {
+      const title = conversations.find(c => c.conversation.id === id)?.conversation.title
+      const ok = await confirm({
+        title: 'Supprimer la conversation',
+        message: title
+          ? `Supprimer définitivement « ${title} » ? Cette action est irréversible.`
+          : 'Supprimer définitivement cette conversation ? Cette action est irréversible.',
+        confirmLabel: 'Supprimer',
+        variant: 'danger',
+      })
+      if (ok) deleteConversation(id)
+    },
     onArchive: id => archiveConversation(id),
     onRename: (id, t) => renameConversation(id, t),
     onMove: (id, fid) => moveConversation(id, fid),
@@ -449,7 +464,15 @@ export default function AssistantSidebarBody({ collapsed = false }: { collapsed?
               <FolderSection key={f.id} folder={f}
                 items={conversations.filter(c => c.conversation.folder_id === f.id).slice().sort(convCmp)}
                 collapsed={collapsedFolders.has(f.id)} onToggle={() => toggleFolder(f.id)}
-                onRenameFolder={n => renameFolder(f.id, n)} onDeleteFolder={() => deleteFolder(f.id)}
+                onRenameFolder={n => renameFolder(f.id, n)} onDeleteFolder={async () => {
+                  const ok = await confirm({
+                    title: 'Supprimer le projet',
+                    message: `Supprimer « ${f.name} » ? Les conversations qu'il contient ne sont pas supprimées.`,
+                    confirmLabel: 'Supprimer',
+                    variant: 'danger',
+                  })
+                  if (ok) deleteFolder(f.id)
+                }}
                 {...handlers} />
             ))}
             {/* Conversations sans dossier (par date) */}
@@ -461,6 +484,9 @@ export default function AssistantSidebarBody({ collapsed = false }: { collapsed?
           <p className="text-xs text-text-tertiary text-center mt-6 px-3">Aucune conversation pour l'instant</p>
         )}
       </div>
+      {confirmState && (
+        <ConfirmDialog {...confirmState} onConfirm={handleConfirm} onCancel={handleCancel} />
+      )}
     </>
   )
 }

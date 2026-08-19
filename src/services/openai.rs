@@ -10,6 +10,8 @@ use axum::async_trait;
 use serde_json::Value;
 
 use super::agentic::{AgenticProvider, AgenticTurn, ToolOutcome, ToolUse};
+use super::endpoint::redact;
+use super::provider::DEFAULT_MAX_OUTPUT_TOKENS;
 use super::mcp_client::ToolCatalogItem;
 use super::provider::{LlmMessage, StreamChunk};
 
@@ -19,6 +21,8 @@ pub struct OpenAiService {
     api_key:       String,
     base_url:      String,
     default_model: String,
+    /// Instance-wide answer-length ceiling, applied to every request.
+    max_output_tokens: u32,
 }
 
 #[derive(Deserialize)]
@@ -73,7 +77,14 @@ impl OpenAiService {
             api_key: api_key.to_string(),
             base_url: base_url.trim_end_matches('/').to_string(),
             default_model: default_model.to_string(),
+            max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
         })
+    }
+
+    /// Applies the instance-wide answer-length ceiling.
+    pub fn with_max_output_tokens(mut self, cap: u32) -> Self {
+        self.max_output_tokens = cap.max(1);
+        self
     }
 
     pub fn default_model(&self) -> &str { &self.default_model }
@@ -102,9 +113,10 @@ impl OpenAiService {
         messages: Vec<LlmMessage>,
     ) -> Result<mpsc::UnboundedReceiver<StreamChunk>> {
         let body = json!({
-            "model":    model,
-            "messages": messages,
-            "stream":   true,
+            "model":      model,
+            "messages":   messages,
+            "stream":     true,
+            "max_tokens": self.max_output_tokens,
             "stream_options": { "include_usage": true },
         });
 
@@ -117,7 +129,7 @@ impl OpenAiService {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body   = resp.text().await.unwrap_or_default();
+            let body   = redact(&resp.text().await.unwrap_or_default(), &self.api_key);
             anyhow::bail!("OpenAI {status}: {body}");
         }
 
@@ -195,9 +207,10 @@ impl AgenticProvider for OpenAiService {
         msgs.extend_from_slice(messages);
 
         let mut body = json!({
-            "model":    model,
-            "messages": msgs,
-            "stream":   false,
+            "model":      model,
+            "messages":   msgs,
+            "stream":     false,
+            "max_tokens": self.max_output_tokens,
         });
         if !tools.is_empty() { body["tools"] = json!(tools); }
 
@@ -209,7 +222,7 @@ impl AgenticProvider for OpenAiService {
             .context("connexion OpenAI")?;
         if !resp.status().is_success() {
             let status = resp.status();
-            let text   = resp.text().await.unwrap_or_default();
+            let text   = redact(&resp.text().await.unwrap_or_default(), &self.api_key);
             anyhow::bail!("OpenAI {status}: {text}");
         }
 

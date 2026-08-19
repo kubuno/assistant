@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::{
     errors::{AssistantError, AssistantResult},
+    handlers::agent_access,
     middleware::AssistantUser,
     models::{Conversation, ConversationSummary, CreateConversationDto, Message, UpdateConversationDto},
     state::AppState,
@@ -68,15 +69,39 @@ pub async fn create_conversation(
     user: AssistantUser,
     Json(dto): Json<CreateConversationDto>,
 ) -> AssistantResult<(StatusCode, Json<Conversation>)> {
-    let default_model = st.ollama.default_model().to_string();
+    let policy = st.instance();
+    let default_model = st.providers().ollama.default_model().to_string();
     let model_id  = dto.model.unwrap_or(default_model);
+    // Instance policy: only the listed models may be used.
+    if !policy.model_allowed(&model_id) {
+        return Err(AssistantError::Validation(format!(
+            "Modèle non autorisé sur cette instance : {model_id}"
+        )));
+    }
     let valid_providers = ["ollama", "openai", "anthropic", "google"];
     let provider = dto.provider
         .filter(|p| valid_providers.contains(&p.as_str()))
         .unwrap_or_else(|| "ollama".to_string());
+    // Instance policy: an instance pinned to what it hosts refuses a remote one
+    // outright, rather than letting the conversation fail on its first message.
+    if provider != "ollama" && !policy.allow_cloud_providers {
+        return Err(AssistantError::Validation(
+            "Cette instance n'autorise que le moteur qu'elle héberge.".into(),
+        ));
+    }
 
+    // Pinning a conversation to an agent IS an access to that agent: the id must
+    // be one the user may reach, otherwise anybody could bind a conversation of
+    // their own to a stranger's agent and have the model run — and reveal — its
+    // system prompt. An id that is unknown and one that belongs to somebody else
+    // get the very same answer, so the route cannot be used to probe ids.
     let agent_id = match dto.agent_id {
-        Some(id) => Some(id),
+        Some(id) => {
+            if agent_access::reachable(&st.db, id, user.id).await?.is_none() {
+                return Err(agent_access::not_found());
+            }
+            Some(id)
+        }
         None => {
             sqlx::query_scalar::<_, Uuid>(
                 "SELECT id FROM assistant.agents WHERE is_system = true ORDER BY created_at LIMIT 1",

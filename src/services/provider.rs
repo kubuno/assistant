@@ -1,3 +1,10 @@
+/// Answer-length ceiling used when no instance policy has been read yet.
+///
+/// This is the value the Anthropic client used to hard-code; keeping it as the
+/// compiled floor means a module that cannot reach the core behaves exactly as
+/// it did before the setting existed.
+pub const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 4096;
+
 /// Common streaming chunk emitted by all LLM providers.
 pub struct StreamChunk {
     pub delta:             Option<String>,

@@ -10,6 +10,8 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use uuid::Uuid;
 
+use super::endpoint::redact;
+
 /// A tool as advertised by the gateway (`tools/list`).
 #[derive(Debug, Clone)]
 pub struct ToolCatalogItem {
@@ -64,7 +66,7 @@ impl McpClient {
             .context("connexion passerelle MCP du core")?;
         if !resp.status().is_success() {
             let status = resp.status();
-            let text   = resp.text().await.unwrap_or_default();
+            let text   = redact(&resp.text().await.unwrap_or_default(), &self.secret);
             anyhow::bail!("passerelle MCP {status}: {text}");
         }
         resp.json::<Value>().await.context("réponse MCP invalide")

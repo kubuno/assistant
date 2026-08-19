@@ -1,3 +1,4 @@
+pub mod agent_access;
 pub mod agents;
 pub mod delta;
 pub mod conversations;
