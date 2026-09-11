@@ -1,8 +1,7 @@
+import { isAfter, isToday, isYesterday, subDays } from '@kubuno/sdk'
 import { Plus, Pin, Trash2, Sparkles, Settings2 } from 'lucide-react'
 import { useAssistantStore } from '../assistantStore'
 import { ConversationSummary } from '../api'
-import { isToday, isYesterday, subDays, isAfter } from 'date-fns'
-
 function groupConversations(convs: ConversationSummary[]) {
   const pinned:   ConversationSummary[] = []
   const today:    ConversationSummary[] = []

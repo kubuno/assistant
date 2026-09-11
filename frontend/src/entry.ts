@@ -1,7 +1,7 @@
+import { RouteRegistry, WaffleAppRegistry, ModuleSettingsRegistry, useSidebarStore, useToolbarStore, useRightPanelStore, SDK_VERSION, FaviconRegistry } from '@kubuno/sdk'
 /** Bundle MODULE assistant — chargé à l'exécution (cf. vite.module.config). */
 import { lazy } from 'react'
-import { RouteRegistry, WaffleAppRegistry, ModuleSettingsRegistry, useSidebarStore, useToolbarStore, useRightPanelStore, SDK_VERSION } from '@kubuno/sdk'
-import { Bot } from 'lucide-react'
+import AssistantLogo from './AssistantLogo'
 import AssistantMiniPanel from './AssistantMiniPanel'
 import './index.css'
 import './i18n'
@@ -11,8 +11,11 @@ import { registerAssistantAdmin } from './admin/AssistantAdminPanel'
 export const sdkVersion = SDK_VERSION
 
 export function register() {
+  // Assistant has its own logo: the tab shows it under /assistant.
+  FaviconRegistry.register('assistant', '/assistant-logo.png')
+
   WaffleAppRegistry.register('assistant', 'Assistant', [
-    { id: 'assistant', label: 'Assistant', Icon: Bot, path: '/assistant' },
+    { id: 'assistant', label: 'Assistant', Icon: AssistantLogo, path: '/assistant' },
   ])
 
   // The header gear button opens the per-user Assistant settings while in /assistant.
@@ -38,7 +41,7 @@ export function register() {
   // Side panel: resume a conversation from anywhere.
   useRightPanelStore.getState().registerEntry({
     moduleId:       'assistant',
-    icon:           Bot,
+    icon:           AssistantLogo,
     label:          'Assistant',
     panelComponent: AssistantMiniPanel,
     openPath:       '/assistant',

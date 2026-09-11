@@ -9,7 +9,6 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "date-fns": "^4.4.0",
     "highlight.js": "^11.11.1",
     "lucide-react": "^1.17.0",
     "react-markdown": "^10.1.0",

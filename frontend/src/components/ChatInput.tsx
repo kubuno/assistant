@@ -1,6 +1,6 @@
+import { useVoiceDictation } from '@kubuno/sdk'
 import { useRef, useEffect, useState, KeyboardEvent } from 'react'
 import { Plus, Square, Mic, ImagePlus, X, ChevronDown } from 'lucide-react'
-import { useVoiceDictation } from '@kubuno/sdk'
 import { MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
 import { useAssistantStore } from '../assistantStore'
 
@@ -165,7 +165,7 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
               <button
                 onClick={modelMenu.open}
                 className="flex items-center gap-1 text-xs font-medium text-text-secondary
-                           hover:text-text-primary hover:bg-surface-2 rounded-full px-3 py-1.5 transition-colors"
+                           hover:text-text-primary hover:bg-surface-2 rounded-md px-3 py-1.5 transition-colors"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                 {modelLabel}

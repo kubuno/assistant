@@ -55,13 +55,13 @@ export default function ToolCallCard({ call }: { call: AssistantToolCall }) {
           <div className="mt-2 ml-6 flex items-center gap-2">
             <button
               onClick={run}
-              className="flex items-center gap-1 rounded-full bg-danger px-3 py-1 font-medium text-white hover:bg-danger/90 transition-colors"
+              className="flex items-center gap-1 rounded-md bg-danger px-3 py-1 font-medium text-white hover:bg-danger/90 transition-colors"
             >
               <Play size={11} /> Exécuter
             </button>
             <button
               onClick={() => setPhase('cancelled')}
-              className="flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 font-medium text-text-secondary hover:bg-surface-3 transition-colors"
+              className="flex items-center gap-1 rounded-md bg-surface-2 px-3 py-1 font-medium text-text-secondary hover:bg-surface-3 transition-colors"
             >
               <X size={11} /> Annuler
             </button>

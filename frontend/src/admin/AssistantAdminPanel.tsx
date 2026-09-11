@@ -1,3 +1,4 @@
+import { ModuleAdminRegistry } from '@kubuno/sdk'
 // Instance administration of the assistant, rendered in the core admin console
 // under Modules ▸ Assistant. Registered as a CUSTOM section rather than left to
 // the generic settings form because the values here are SECRETS: the core's
@@ -18,7 +19,6 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, CheckCircle, Eye, EyeOff, Save } from 'lucide-react'
 import { Button, Input, Toggle } from '@ui'
-import { ModuleAdminRegistry } from '@kubuno/sdk'
 import { assistantApi, type ProviderConfig, type UpdateProviderDto } from '../api'
 
 /** Display identity of each supported engine. Unknown ids degrade gracefully. */

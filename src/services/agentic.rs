@@ -75,6 +75,9 @@ pub enum AgenticEvent {
 }
 
 /// Spawn the loop and return a receiver of its events.
+// A spawn entry point with genuinely distinct inputs; bundling them into a
+// struct for a single call site would not make it clearer.
+#[allow(clippy::too_many_arguments)]
 pub fn run_agentic(
     provider: Arc<dyn AgenticProvider>,
     mcp: McpClient,

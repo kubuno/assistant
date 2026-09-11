@@ -1,6 +1,6 @@
+import { useAuthStore } from '@kubuno/sdk'
 import { useEffect, useRef, useState } from 'react'
 import { Copy, Check, Pencil } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
 import { useAssistantStore } from '../assistantStore'
 
 interface Props {
@@ -60,11 +60,11 @@ export default function UserMessage({ id, content }: Props) {
           />
           <div className="flex items-center justify-end gap-2 mt-2">
             <button onClick={cancel}
-              className="text-sm font-medium text-text-secondary hover:text-text-primary px-4 py-1.5 rounded-full hover:bg-surface-2 transition-colors">
+              className="text-sm font-medium text-text-secondary hover:text-text-primary px-4 py-1.5 rounded-md hover:bg-surface-2 transition-colors">
               Annuler
             </button>
             <button onClick={save} disabled={!draft.trim() || isStreaming}
-              className="text-sm font-medium text-white bg-primary hover:bg-primary-hover disabled:opacity-40 px-4 py-1.5 rounded-full transition-colors">
+              className="text-sm font-medium text-white bg-primary hover:bg-primary-hover disabled:opacity-40 px-4 py-1.5 rounded-md transition-colors">
               Envoyer
             </button>
           </div>

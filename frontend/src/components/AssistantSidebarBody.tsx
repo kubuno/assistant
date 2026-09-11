@@ -1,10 +1,9 @@
+import { prompt, useConfirm, isAfter, isToday, isYesterday, subDays } from '@kubuno/sdk'
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Plus, Search, Library, Pin, Trash2, Pencil, FolderPlus, FolderInput, ChevronRight, Folder, Check, X, Share2, UserPlus, Archive } from 'lucide-react'
 import { ConfirmDialog, MenuDropdown, useMenuDropdown, type MenuItem } from '@ui'
-import { prompt, useConfirm } from '@kubuno/sdk'
 import { useAssistantStore } from '../assistantStore'
-import { isToday, isYesterday, subDays, isAfter } from 'date-fns'
 import { hashTo, fromHash } from '../hashRoute'
 import type { ConversationSummary, AssistantFolder } from '../api'
 

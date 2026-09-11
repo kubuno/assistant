@@ -1,6 +1,6 @@
+import { useAuthStore } from '@kubuno/sdk'
 import { Sparkles } from 'lucide-react'
 import { useEffect } from 'react'
-import { useAuthStore } from '@kubuno/sdk'
 import PromptSuggestions from './PromptSuggestions'
 import ChatInput from './ChatInput'
 import { useAssistantStore } from '../assistantStore'
@@ -67,7 +67,7 @@ export default function HomePage({ onConvCreated }: Props) {
                 <button
                   key={a.id}
                   onClick={() => setSelectedAgentId(a.id)}
-                  className={`flex items-center gap-1.5 h-8 pl-2 pr-3 rounded-full border text-sm transition-colors ${
+                  className={`flex items-center gap-1.5 h-8 pl-2 pr-3 rounded-md border text-sm transition-colors ${
                     active ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border text-text-secondary hover:bg-surface-2'
                   }`}
                 >

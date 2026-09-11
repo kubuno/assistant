@@ -101,7 +101,7 @@ impl InstanceConfig {
             return true;
         }
         let m = model.trim().to_ascii_lowercase();
-        self.allowed_models.iter().any(|a| *a == m)
+        self.allowed_models.contains(&m)
     }
 }
 
