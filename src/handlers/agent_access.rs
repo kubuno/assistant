@@ -25,10 +25,30 @@ use uuid::Uuid;
 use crate::errors::{AssistantError, AssistantResult};
 
 /// Visibility of the whole collection, for listings. `$1` = user id.
-pub const VISIBLE_SQL: &str = "(owner_id = $1 OR is_system = true)";
+///
+/// A macro rather than a plain constant so that it expands to a string
+/// *literal*: callers assemble their queries with `concat!`, which keeps the
+/// finished SQL a compile-time `&'static str`. Nothing built at run time ever
+/// reaches the query text, so the driver needs no injection audit for it.
+macro_rules! visible_sql {
+    () => {
+        "(owner_id = $1 OR is_system = true)"
+    };
+}
+pub(crate) use visible_sql;
 
-/// Visibility of a single agent. `$1` = agent id, `$2` = user id.
-pub const REACHABLE_SQL: &str = "id = $1 AND (owner_id = $2 OR is_system = true)";
+/// Visibility of a single agent. `$1` = agent id, `$2` = user id. Same literal
+/// discipline as [`visible_sql!`].
+macro_rules! reachable_sql {
+    () => {
+        "id = $1 AND (owner_id = $2 OR is_system = true)"
+    };
+}
+pub(crate) use reachable_sql;
+
+/// The two predicates as values, for tests and for reading.
+pub const VISIBLE_SQL: &str = visible_sql!();
+pub const REACHABLE_SQL: &str = reachable_sql!();
 
 /// The same rule expressed in Rust, applied to the row the SQL returned.
 ///
@@ -60,11 +80,11 @@ pub async fn load_prompt(
     agent_id: Uuid,
     user_id:  Uuid,
 ) -> AssistantResult<Option<AgentPrompt>> {
-    let sql = format!(
+    let row = sqlx::query_as::<_, (Option<Uuid>, bool, String, Vec<String>)>(concat!(
         "SELECT owner_id, is_system, system_prompt, enabled_tools \
-         FROM assistant.agents WHERE {REACHABLE_SQL}"
-    );
-    let row = sqlx::query_as::<_, (Option<Uuid>, bool, String, Vec<String>)>(&sql)
+         FROM assistant.agents WHERE ",
+        reachable_sql!(),
+    ))
         .bind(agent_id)
         .bind(user_id)
         .fetch_optional(db)
@@ -88,10 +108,10 @@ pub async fn reachable(
     agent_id: Uuid,
     user_id:  Uuid,
 ) -> AssistantResult<Option<bool>> {
-    let sql = format!(
-        "SELECT owner_id, is_system FROM assistant.agents WHERE {REACHABLE_SQL}"
-    );
-    let row = sqlx::query_as::<_, (Option<Uuid>, bool)>(&sql)
+    let row = sqlx::query_as::<_, (Option<Uuid>, bool)>(concat!(
+        "SELECT owner_id, is_system FROM assistant.agents WHERE ",
+        reachable_sql!(),
+    ))
         .bind(agent_id)
         .bind(user_id)
         .fetch_optional(db)

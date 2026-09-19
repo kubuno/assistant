@@ -12,7 +12,10 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::{
-    errors::AssistantResult, handlers::agent_access, middleware::AssistantUser, state::AppState,
+    errors::AssistantResult,
+    handlers::agent_access::{reachable_sql, visible_sql},
+    middleware::AssistantUser,
+    state::AppState,
 };
 
 #[derive(serde::Deserialize)]
@@ -130,16 +133,16 @@ pub async fn agents_delta(
     Query(q): Query<DeltaQuery>,
 ) -> AssistantResult<Json<Value>> {
     let limit = q.limit.unwrap_or(200).clamp(1, 500);
-    let list_sql = format!(
+    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(concat!(
         r#"SELECT id, change_seq, 'live' AS src FROM assistant.agents
-               WHERE {} AND change_seq>$2
+               WHERE "#,
+        visible_sql!(),
+        r#" AND change_seq>$2
            UNION ALL
            SELECT id, change_seq, 'tomb' AS src FROM assistant.agent_tombstones
                WHERE owner_id=$1 AND change_seq>$2
            ORDER BY change_seq LIMIT $3"#,
-        agent_access::VISIBLE_SQL,
-    );
-    let rows: Vec<(Uuid, i64, String)> = sqlx::query_as(&list_sql)
+    ))
         .bind(user.id)
         .bind(q.cursor)
         .bind(limit)
@@ -149,13 +152,14 @@ pub async fn agents_delta(
     let new_cursor = rows.last().map(|r| r.1).unwrap_or(q.cursor);
     // Same scope as the id list, repeated on the row itself: this payload carries
     // `system_prompt`, so it must never be reachable by id alone.
-    let row_sql = format!(
+    const ROW_SQL: &str = concat!(
         r#"SELECT to_jsonb(a) FROM (
                SELECT id, name, description, system_prompt, preferred_model AS default_model,
                       avatar_emoji, avatar_color, prompt_suggestions, is_system,
                       owner_id AS created_by, created_at, updated_at
-               FROM assistant.agents WHERE {}) a"#,
-        agent_access::REACHABLE_SQL,
+               FROM assistant.agents WHERE "#,
+        reachable_sql!(),
+        ") a",
     );
     let mut changes = Vec::with_capacity(rows.len());
     for (id, seq, src) in &rows {
@@ -163,7 +167,7 @@ pub async fn agents_delta(
             changes.push(json!({ "uuid": id, "kind": "deleted", "change_seq": seq }));
             continue;
         }
-        let agent: Option<Value> = sqlx::query_scalar(&row_sql)
+        let agent: Option<Value> = sqlx::query_scalar(ROW_SQL)
             .bind(id)
             .bind(user.id)
             .fetch_optional(&st.db)

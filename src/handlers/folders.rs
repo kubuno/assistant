@@ -12,7 +12,15 @@ use crate::{
     state::AppState,
 };
 
-const COLS: &str = "id, owner_id, name, color, position, created_at, updated_at";
+/// Columns of a folder as the API returns it. A macro rather than a constant so
+/// that it expands to a string *literal*: the queries below are assembled with
+/// `concat!` and stay compile-time `&'static str`, which the driver accepts
+/// without an injection audit.
+macro_rules! cols {
+    () => {
+        "id, owner_id, name, color, position, created_at, updated_at"
+    };
+}
 
 pub async fn list_folders(
     State(st): State<AppState>,
@@ -42,9 +50,11 @@ pub async fn create_folder(
         .bind(user.id)
         .fetch_one(&st.db)
         .await?;
-    let folder = sqlx::query_as::<_, Folder>(
-        &format!("INSERT INTO assistant.folders (id, owner_id, name, color, position) VALUES (COALESCE($5, uuid_generate_v4()), $1, $2, $3, $4) RETURNING {COLS}"),
-    )
+    let folder = sqlx::query_as::<_, Folder>(concat!(
+        "INSERT INTO assistant.folders (id, owner_id, name, color, position) \
+         VALUES (COALESCE($5, uuid_generate_v4()), $1, $2, $3, $4) RETURNING ",
+        cols!(),
+    ))
     .bind(user.id)
     .bind(name)
     .bind(dto.color.as_deref())
@@ -61,17 +71,16 @@ pub async fn update_folder(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateFolderDto>,
 ) -> AssistantResult<Json<Folder>> {
-    let folder = sqlx::query_as::<_, Folder>(
-        &format!(
-            r#"UPDATE assistant.folders SET
-                   name     = COALESCE($3, name),
-                   color    = COALESCE($4, color),
-                   position = COALESCE($5, position),
-                   updated_at = NOW()
-               WHERE id = $1 AND owner_id = $2
-               RETURNING {COLS}"#,
-        ),
-    )
+    let folder = sqlx::query_as::<_, Folder>(concat!(
+        r#"UPDATE assistant.folders SET
+               name     = COALESCE($3, name),
+               color    = COALESCE($4, color),
+               position = COALESCE($5, position),
+               updated_at = NOW()
+           WHERE id = $1 AND owner_id = $2
+           RETURNING "#,
+        cols!(),
+    ))
     .bind(id)
     .bind(user.id)
     .bind(dto.name.as_deref())
