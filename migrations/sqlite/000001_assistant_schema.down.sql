@@ -1,0 +1,10 @@
+DROP TRIGGER IF EXISTS assistant.conversations_updated_at;
+DROP TABLE IF EXISTS assistant.agent_tombstones;
+DROP TABLE IF EXISTS assistant.folder_tombstones;
+DROP TABLE IF EXISTS assistant.conv_tombstones;
+DROP TABLE IF EXISTS assistant.change_counter;
+DROP TABLE IF EXISTS assistant.messages;
+DROP TABLE IF EXISTS assistant.conversations;
+DROP TABLE IF EXISTS assistant.folders;
+DROP TABLE IF EXISTS assistant.agents;
+DROP TABLE IF EXISTS assistant.provider_config;

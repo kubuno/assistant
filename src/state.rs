@@ -1,13 +1,13 @@
 use std::sync::{Arc, RwLock};
 
-use sqlx::PgPool;
+use kubuno_db::DbPool;
 
 use crate::config::{InstanceConfig, Settings};
 use crate::services::{registry::ProviderSet, OllamaService};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db:       PgPool,
+    pub db:       DbPool,
     pub settings: Arc<Settings>,
     /// Admin-editable instance settings, refreshed in the background from the core.
     pub instance: Arc<RwLock<InstanceConfig>>,

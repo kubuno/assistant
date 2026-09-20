@@ -19,7 +19,7 @@
 //!   conversation could be pinned to another account's agent and run — and leak
 //!   — its `system_prompt`.
 
-use sqlx::PgPool;
+use kubuno_db::{params, DbPool};
 use uuid::Uuid;
 
 use crate::errors::{AssistantError, AssistantResult};
@@ -76,18 +76,30 @@ pub struct AgentPrompt {
 /// `Ok(None)` = unknown id **or** somebody else's agent; the caller cannot tell
 /// the two apart, and neither can its client.
 pub async fn load_prompt(
-    db:       &PgPool,
+    db:       &DbPool,
     agent_id: Uuid,
     user_id:  Uuid,
 ) -> AssistantResult<Option<AgentPrompt>> {
-    let row = sqlx::query_as::<_, (Option<Uuid>, bool, String, Vec<String>)>(concat!(
-        "SELECT owner_id, is_system, system_prompt, enabled_tools \
-         FROM assistant.agents WHERE ",
-        reachable_sql!(),
-    ))
-        .bind(agent_id)
-        .bind(user_id)
-        .fetch_optional(db)
+    // `enabled_tools` is a JSON array (portable form of PostgreSQL's `TEXT[]`);
+    // `#[sqlx(json)]` decodes it on the three engines.
+    #[derive(sqlx::FromRow)]
+    struct PromptRow {
+        owner_id:      Option<Uuid>,
+        is_system:     bool,
+        system_prompt: String,
+        #[sqlx(json)]
+        enabled_tools: Vec<String>,
+    }
+
+    let row = db
+        .fetch_optional_as::<PromptRow>(
+            concat!(
+                "SELECT owner_id, is_system, system_prompt, enabled_tools \
+                 FROM assistant.agents WHERE ",
+                reachable_sql!(),
+            ),
+            params![agent_id, user_id],
+        )
         .await
         .map_err(|e| {
             tracing::error!(error = %e, agent_id = %agent_id, "chargement de l'agent d'une conversation");
@@ -95,8 +107,8 @@ pub async fn load_prompt(
         })?;
 
     Ok(row
-        .filter(|(owner_id, is_system, _, _)| is_reachable(*owner_id, *is_system, user_id))
-        .map(|(_, _, system_prompt, enabled_tools)| AgentPrompt { system_prompt, enabled_tools }))
+        .filter(|r| is_reachable(r.owner_id, r.is_system, user_id))
+        .map(|r| AgentPrompt { system_prompt: r.system_prompt, enabled_tools: r.enabled_tools }))
 }
 
 /// Whether the user may touch this agent, and whether it is a shared system one.
@@ -104,17 +116,18 @@ pub async fn load_prompt(
 /// `Ok(None)` = unknown or not the caller's; `Ok(Some(true))` = a system agent,
 /// which is readable by everyone but writable by no one.
 pub async fn reachable(
-    db:       &PgPool,
+    db:       &DbPool,
     agent_id: Uuid,
     user_id:  Uuid,
 ) -> AssistantResult<Option<bool>> {
-    let row = sqlx::query_as::<_, (Option<Uuid>, bool)>(concat!(
-        "SELECT owner_id, is_system FROM assistant.agents WHERE ",
-        reachable_sql!(),
-    ))
-        .bind(agent_id)
-        .bind(user_id)
-        .fetch_optional(db)
+    let row = db
+        .fetch_optional_as::<(Option<Uuid>, bool)>(
+            concat!(
+                "SELECT owner_id, is_system FROM assistant.agents WHERE ",
+                reachable_sql!(),
+            ),
+            params![agent_id, user_id],
+        )
         .await
         .map_err(|e| {
             tracing::error!(error = %e, agent_id = %agent_id, "vérification d'accès à un agent");

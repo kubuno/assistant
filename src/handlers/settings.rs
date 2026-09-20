@@ -12,6 +12,7 @@
 //! send a message straight away instead of waiting for a restart.
 
 use axum::{extract::State, Json};
+use kubuno_db::params;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -78,11 +79,11 @@ pub async fn list_providers(
     State(st): State<AppState>,
     _admin: AssistantAdmin,
 ) -> AssistantResult<Json<Vec<ProviderConfig>>> {
-    let rows = sqlx::query_as::<_, ProviderConfigRow>(
+    let rows = st.db.fetch_all_as::<ProviderConfigRow>(
         "SELECT provider, enabled, api_key, base_url, default_model \
          FROM assistant.provider_config ORDER BY provider",
+        params![],
     )
-    .fetch_all(&st.db)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, "Lecture de la configuration des fournisseurs");
@@ -109,26 +110,41 @@ pub async fn update_provider(
         validate_base_url(url).map_err(AssistantError::Validation)?;
     }
 
-    let row = sqlx::query_as::<_, ProviderConfigRow>(
-        r#"UPDATE assistant.provider_config SET
-               enabled       = COALESCE($2, enabled),
-               api_key       = COALESCE($3, api_key),
-               base_url      = COALESCE($4, base_url),
-               default_model = COALESCE($5, default_model),
-               updated_at    = NOW()
-           WHERE provider = $1
-           RETURNING provider, enabled, api_key, base_url, default_model"#,
+    // `NOW()` is not portable; the timestamp is bound. `provider_config` carries
+    // no delta feed, so there is no journal work here — just the write and a
+    // re-select (MySQL has no `RETURNING`).
+    st.db.execute(
+        "UPDATE assistant.provider_config SET \
+             enabled       = COALESCE($1, enabled), \
+             api_key       = COALESCE($2, api_key), \
+             base_url      = COALESCE($3, base_url), \
+             default_model = COALESCE($4, default_model), \
+             updated_at    = $5 \
+         WHERE provider = $6",
+        params![
+            dto.enabled,
+            dto.api_key.as_deref(),
+            dto.base_url.as_deref(),
+            dto.default_model.as_deref(),
+            chrono::Utc::now(),
+            &provider
+        ],
     )
-    .bind(&provider)
-    .bind(dto.enabled)
-    .bind(dto.api_key.as_deref())
-    .bind(dto.base_url.as_deref())
-    .bind(dto.default_model.as_deref())
-    .fetch_one(&st.db)
     .await
     .map_err(|e| {
         // `provider` is a value from the whitelist above, never a secret.
         tracing::error!(error = %e, provider = %provider, "Écriture de la configuration d'un fournisseur");
+        AssistantError::from(e)
+    })?;
+
+    let row = st.db.fetch_one_as::<ProviderConfigRow>(
+        "SELECT provider, enabled, api_key, base_url, default_model \
+         FROM assistant.provider_config WHERE provider = $1",
+        params![&provider],
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, provider = %provider, "Relecture de la configuration d'un fournisseur");
         AssistantError::from(e)
     })?;
 

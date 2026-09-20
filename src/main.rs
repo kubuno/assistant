@@ -8,7 +8,7 @@ use kubuno_assistant::{
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sqlx::postgres::PgPoolOptions;
+use kubuno_assistant::SCHEMA;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -73,16 +73,16 @@ async fn run_cli_command(cmd: &str, args: &[String]) -> Result<()> {
         }
 
         "agents" => {
-            let opts = settings.database.connect_options()?;
-            let pool = PgPoolOptions::new().max_connections(2).connect_with(opts).await
-                .context("Connexion PostgreSQL")?;
+            let pool = kubuno_db::connect(&settings.database, SCHEMA).await
+                .context("Connexion à la base de données")?;
 
             #[derive(sqlx::FromRow)]
             struct AgentRow { name: String, description: Option<String>, is_system: bool }
 
-            let agents = sqlx::query_as::<_, AgentRow>(
-                "SELECT name, description, is_system FROM assistant.agents ORDER BY is_system DESC, name"
-            ).fetch_all(&pool).await?;
+            let agents = pool.fetch_all_as::<AgentRow>(
+                "SELECT name, description, is_system FROM assistant.agents ORDER BY is_system DESC, name",
+                kubuno_db::params![],
+            ).await?;
 
             if agents.is_empty() {
                 println!("Aucun agent configuré.");
@@ -244,31 +244,76 @@ fn same_policy(a: &InstanceConfig, b: &InstanceConfig) -> bool {
 /// Deletes conversations untouched for longer than the instance keeps them.
 ///
 /// Age is counted from the LAST activity, not from creation: a conversation
-/// somebody still uses is not old. Messages follow through the foreign key, and
-/// the delta tombstones are written by the table's own trigger, so a client that
-/// synchronises learns about the removal. `0` = kept forever.
+/// somebody still uses is not old. Messages follow through the foreign key.
+/// A cascade runs no application code, so the delta tombstone of each removed
+/// conversation is written explicitly here (in the same transaction as its
+/// delete) — otherwise a synchronising client would never learn of the removal.
+/// `0` = kept forever.
 async fn purge_expired_conversations(state: &AppState) {
+    use kubuno_assistant::sync;
+    use kubuno_db::params;
+
     let days = state.instance().conversation_retention_days;
     if days <= 0 {
         return;
     }
-    match sqlx::query(
-        "DELETE FROM assistant.conversations \
-         WHERE updated_at < NOW() - ($1::int * INTERVAL '1 day')",
-    )
-    .bind(days as i32)
-    .execute(&state.db)
-    .await
+    // Compute the cutoff in Rust rather than with a non-portable INTERVAL literal.
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
+
+    #[derive(sqlx::FromRow)]
+    struct ConvOwner {
+        id:       uuid::Uuid,
+        owner_id: uuid::Uuid,
+    }
+
+    let expired: Vec<ConvOwner> = match state
+        .db
+        .fetch_all_as::<ConvOwner>(
+            "SELECT id, owner_id FROM assistant.conversations WHERE updated_at < $1",
+            params![cutoff],
+        )
+        .await
     {
-        Ok(res) if res.rows_affected() > 0 => {
-            tracing::info!(
-                deleted = res.rows_affected(),
-                retention_days = days,
-                "Purge des conversations expirées"
-            );
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!(error = %e, "Purge des conversations expirées (lecture)");
+            return;
         }
-        Ok(_) => {}
-        Err(e) => tracing::error!(error = %e, "Purge des conversations expirées"),
+    };
+
+    let mut deleted = 0u64;
+    for conv in &expired {
+        let res: Result<(), sqlx::Error> = async {
+            let mut tx = state.db.begin().await?;
+            let seq = sync::next_conv_seq(&mut tx).await?;
+            tx.execute(
+                "DELETE FROM assistant.conversations WHERE id = $1",
+                params![conv.id],
+            )
+            .await?;
+            kubuno_db::journal::record_tombstone(
+                &mut tx,
+                sync::CONV_TOMBSTONES,
+                conv.id,
+                conv.owner_id,
+                seq,
+            )
+            .await?;
+            tx.commit().await?;
+            Ok(())
+        }
+        .await;
+        match res {
+            Ok(()) => deleted += 1,
+            Err(e) => tracing::error!(error = %e, "Purge des conversations expirées"),
+        }
+    }
+    if deleted > 0 {
+        tracing::info!(
+            deleted,
+            retention_days = days,
+            "Purge des conversations expirées"
+        );
     }
 }
 
@@ -304,38 +349,30 @@ async fn main() -> Result<()> {
     // Sécurité : interdire toute exécution de processus sur l’hôte (voir kubuno-seccomp).
     kubuno_seccomp::lock_down_process_execution("assistant");
 
-    // Pool PostgreSQL
-    let opts = settings.database.connect_options()?;
-    let pool = PgPoolOptions::new()
-        .max_connections(settings.database.max_connections)
-        .min_connections(settings.database.min_connections)
-        .acquire_timeout(settings.database.connect_timeout)
-        .connect_with(opts)
+    // Database pool. The engine (PostgreSQL / MySQL / SQLite) is the
+    // administrator's choice in `[database] engine`, read at run time; `connect`
+    // also creates the module's namespace (PostgreSQL schema, MySQL database, or
+    // the ATTACHed SQLite file).
+    let pool = kubuno_db::connect(&settings.database, SCHEMA)
         .await
-        .context("Connexion PostgreSQL")?;
+        .context("Connexion à la base de données")?;
 
-    // Migrations
+    // Migrations: the set for the pool's engine, kept inside the module's own
+    // namespace (the table PostgreSQL already used through its search_path).
     if settings.database.run_migrations {
-        sqlx::query("CREATE SCHEMA IF NOT EXISTS assistant")
-            .execute(&pool)
-            .await
-            .context("Création du schéma assistant")?;
+        kubuno_db::migrations!(
+            "./migrations/postgres",
+            "./migrations/mysql",
+            "./migrations/sqlite",
+        )
+        .run(&pool, SCHEMA)
+        .await
+        .context("Migrations")?;
 
-        let migration_opts = settings
-            .database
-            .connect_options()?
-            .options([("search_path", "assistant,public")]);
-        let migration_pool = PgPoolOptions::new()
-            .max_connections(1)
-            .acquire_timeout(settings.database.connect_timeout)
-            .connect_with(migration_opts)
+        // Durable event outbox (no-op on PostgreSQL, which uses LISTEN/NOTIFY).
+        kubuno_db::events::ensure_outbox(&pool, SCHEMA)
             .await
-            .context("Pool de migration")?;
-
-        sqlx::migrate!("./migrations")
-            .run(&migration_pool)
-            .await
-            .context("Migrations")?;
+            .context("Initialisation de l'outbox d'événements")?;
     }
 
     // Local engine as built from the deploy config. It is the fallback the live

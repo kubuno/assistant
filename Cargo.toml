@@ -27,6 +27,7 @@ tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 kubuno-seccomp     = { workspace = true }
 kubuno-modauth     = { workspace = true }
+kubuno-db          = { workspace = true }
 thiserror          = { workspace = true }
 anyhow             = { workspace = true }
 uuid               = { workspace = true }
@@ -42,6 +43,9 @@ toml               = { workspace = true }
 clap               = { workspace = true }
 hex                = { workspace = true }
 async-stream       = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
 
 # ─── Workspace mono-crate (deps tierces recopiées du monorepo kubuno/core ;
 #     crates partagées consommées via dépendances git taguées) ───
@@ -66,7 +70,14 @@ tower-http  = { version = "0.6",  features = ["cors", "compression-gzip", "trace
 async-trait = "0.1"
 
 # Database
-sqlx = { version = "0.9", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "migrate", "tls-rustls", "bigdecimal"] }
+# One binary, three engines. The administrator picks PostgreSQL, MySQL/MariaDB
+# or SQLite in configuration (`database.engine`), read at run time by kubuno-db;
+# all three drivers are compiled in and dispatched at run time. There is no
+# per-engine build. `default-features = false` keeps sqlx's own default backend
+# out, then the three drivers and codecs are listed explicitly (the `derive` and
+# `macros` features live in sqlx's defaults, so they must be re-added for
+# `#[derive(FromRow)]`).
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "uuid", "chrono", "json", "migrate", "tls-rustls", "bigdecimal", "derive", "macros", "postgres", "mysql", "sqlite"] }
 
 # Sérialisation
 serde      = { version = "1", features = ["derive"] }
@@ -99,6 +110,10 @@ kubuno-storage     = { git = "https://github.com/kubuno/core", tag = "storage-v0
 kubuno-seccomp     = { git = "https://github.com/kubuno/core", tag = "seccomp-v0.1.1", package = "kubuno-seccomp" }
 # Verifies the signed identity token minted by the core (trust boundary).
 kubuno-modauth     = { git = "https://github.com/kubuno/core", tag = "modauth-v0.1.0", package = "kubuno-modauth" }
+# PROTOTYPE: pointed at the local crate so this runtime-dispatch rewrite is what
+# builds. The released form is the tagged one below; retag db-v0.5.0 before use.
+#   kubuno-db = { git = "https://github.com/kubuno/core", tag = "db-v0.5.0", package = "kubuno-db" }
+kubuno-db          = { path = "../core/crates/kubuno-db" }
 
 # Erreurs
 thiserror = "1"

@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use axum::extract::Json as AxumJson;
 use axum::http::StatusCode;
+use kubuno_db::{params, DbPool};
 
 use crate::{
     errors::{AssistantError, AssistantResult},
@@ -17,6 +18,7 @@ use crate::{
     models::{FeedbackDto, Message, SendMessageDto, SseEvent},
     services::{agentic::AgenticProvider, run_agentic, AgenticEvent, LlmMessage, McpClient, ToolCatalogItem},
     state::AppState,
+    sync,
 };
 
 #[derive(sqlx::FromRow)]
@@ -26,6 +28,65 @@ struct ConvInfo {
     agent_id: Option<Uuid>,
     model_id: String,
     provider: String,
+}
+
+/// Inserts a message and bumps its parent conversation's stats and delta
+/// sequence, all in one transaction.
+///
+/// This replaces two PostgreSQL triggers the port retired: the stats trigger
+/// (`AFTER INSERT ON messages` → `message_count`/`total_tokens`) and the delta
+/// bump. Neither survives MySQL/SQLite, so both are done here from Rust. The
+/// primary key is generated in the process (MySQL has no `RETURNING`) and
+/// returned. Matching the old triggers, `message_count`/`total_tokens` only ever
+/// grow — a later delete does not decrement them.
+async fn persist_message(
+    db:                &DbPool,
+    conversation_id:   Uuid,
+    role:              &str,
+    content:           &str,
+    tool_calls:        Option<&serde_json::Value>,
+    prompt_tokens:     i32,
+    completion_tokens: i32,
+) -> Result<Uuid, sqlx::Error> {
+    let id = kubuno_db::new_id();
+    let now = chrono::Utc::now();
+    let mut tx = db.begin().await?;
+    let seq = sync::next_conv_seq(&mut tx).await?;
+    match tool_calls {
+        Some(tc) => {
+            tx.execute(
+                "INSERT INTO assistant.messages \
+                     (id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, created_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                params![id, conversation_id, role, content, tc.clone(), prompt_tokens, completion_tokens, now],
+            )
+            .await?;
+        }
+        None => {
+            tx.execute(
+                "INSERT INTO assistant.messages \
+                     (id, conversation_id, role, content, prompt_tokens, completion_tokens, created_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                params![id, conversation_id, role, content, prompt_tokens, completion_tokens, now],
+            )
+            .await?;
+        }
+    }
+    // Stats + delta bump on the parent, folded into a single UPDATE (the old
+    // stats trigger + change_seq bump). `updated_at` is refreshed too, matching
+    // the trigger that counted a conversation's age from its last activity.
+    tx.execute(
+        "UPDATE assistant.conversations SET \
+             message_count = message_count + 1, \
+             total_tokens  = total_tokens + $1 + $2, \
+             updated_at    = $3, \
+             change_seq    = $4 \
+         WHERE id = $5",
+        params![prompt_tokens, completion_tokens, now, seq, conversation_id],
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(id)
 }
 
 pub async fn send_message(
@@ -46,12 +107,10 @@ pub async fn send_message(
         )));
     }
 
-    let conv = sqlx::query_as::<_, ConvInfo>(
+    let conv = st.db.fetch_optional_as::<ConvInfo>(
         "SELECT id, agent_id, model_id, provider FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
+        params![conv_id, user.id],
     )
-    .bind(conv_id)
-    .bind(user.id)
-    .fetch_optional(&st.db)
     .await?
     .ok_or_else(|| AssistantError::NotFound("conversation introuvable".into()))?;
 
@@ -90,25 +149,39 @@ pub async fn send_message(
         // Régénération : supprime la dernière réponse assistant (et ses éventuels
         // messages outils qui suivent le dernier message utilisateur), puis relance
         // depuis l'historique qui se termine alors par le dernier message utilisateur.
-        sqlx::query(
-            r#"DELETE FROM assistant.messages
-               WHERE conversation_id = $1
-                 AND created_at > COALESCE(
-                     (SELECT MAX(created_at) FROM assistant.messages WHERE conversation_id = $1 AND role = 'user'),
-                     '-infinity'::timestamptz)"#,
+        //
+        // The last user message's timestamp is read in Rust (PostgreSQL's
+        // `'-infinity'::timestamptz` and the reused placeholder are not
+        // portable); everything strictly after it is removed. The delete then
+        // bumps the conversation once — replacing the per-row `AFTER DELETE`
+        // trigger — so a client sees the truncation.
+        let last_user: Option<chrono::DateTime<chrono::Utc>> = st.db.fetch_optional_scalar(
+            "SELECT MAX(created_at) FROM assistant.messages WHERE conversation_id = $1 AND role = 'user'",
+            params![conv_id],
         )
-        .bind(conv_id)
-        .execute(&st.db)
         .await?;
+        let mut tx = st.db.begin().await?;
+        match last_user {
+            Some(ts) => {
+                tx.execute(
+                    "DELETE FROM assistant.messages WHERE conversation_id = $1 AND created_at > $2",
+                    params![conv_id, ts],
+                )
+                .await?;
+            }
+            None => {
+                tx.execute(
+                    "DELETE FROM assistant.messages WHERE conversation_id = $1",
+                    params![conv_id],
+                )
+                .await?;
+            }
+        }
+        sync::touch_conversation(&mut tx, conv_id).await?;
+        tx.commit().await?;
     } else {
-        // Persist user message
-        sqlx::query(
-            "INSERT INTO assistant.messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
-        )
-        .bind(conv_id)
-        .bind(dto.content.trim())
-        .execute(&st.db)
-        .await?;
+        // Persist user message (bumps the conversation's stats + delta sequence).
+        persist_message(&st.db, conv_id, "user", dto.content.trim(), None, 0, 0).await?;
     }
 
     // Build history. The instance may cap how far back the model is fed: the
@@ -116,24 +189,21 @@ pub async fn send_message(
     // long conversation stops re-billing its whole past on every turn.
     // `0` keeps the previous behaviour — replay everything.
     let history = if policy.history_window_messages > 0 {
-        let mut recent = sqlx::query_as::<_, Message>(
+        let mut recent = st.db.fetch_all_as::<Message>(
             r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
                FROM assistant.messages WHERE conversation_id = $1
                ORDER BY created_at DESC LIMIT $2"#,
+            params![conv_id, policy.history_window_messages],
         )
-        .bind(conv_id)
-        .bind(policy.history_window_messages)
-        .fetch_all(&st.db)
         .await?;
         recent.reverse();
         recent
     } else {
-        sqlx::query_as::<_, Message>(
+        st.db.fetch_all_as::<Message>(
             r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
                FROM assistant.messages WHERE conversation_id = $1 ORDER BY created_at ASC"#,
+            params![conv_id],
         )
-        .bind(conv_id)
-        .fetch_all(&st.db)
         .await?
     };
 
@@ -210,18 +280,10 @@ pub async fn send_message(
                     }
 
                     let tc = serde_json::Value::Array(tool_calls);
-                    match sqlx::query_scalar::<_, Uuid>(
-                        r#"INSERT INTO assistant.messages
-                               (conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens)
-                           VALUES ($1, 'assistant', $2, $3, $4, $5)
-                           RETURNING id"#,
+                    match persist_message(
+                        &db, conv_id, "assistant", &full_content, Some(&tc),
+                        prompt_tokens, completion_tokens,
                     )
-                    .bind(conv_id)
-                    .bind(&full_content)
-                    .bind(&tc)
-                    .bind(prompt_tokens)
-                    .bind(completion_tokens)
-                    .fetch_one(&db)
                     .await
                     {
                         Ok(msg_id) => {
@@ -301,17 +363,10 @@ pub async fn send_message(
             }
         }
 
-        match sqlx::query_scalar::<_, Uuid>(
-            r#"INSERT INTO assistant.messages
-                   (conversation_id, role, content, prompt_tokens, completion_tokens)
-               VALUES ($1, 'assistant', $2, $3, $4)
-               RETURNING id"#,
+        match persist_message(
+            &db, conv_id, "assistant", &full_content, None,
+            prompt_tokens, completion_tokens,
         )
-        .bind(conv_id)
-        .bind(&full_content)
-        .bind(prompt_tokens)
-        .bind(completion_tokens)
-        .fetch_one(&db)
         .await
         {
             Ok(msg_id) => {
@@ -346,21 +401,30 @@ pub async fn set_feedback(
             return Err(AssistantError::Validation("retour invalide".into()));
         }
     }
-    let affected = sqlx::query(
-        r#"UPDATE assistant.messages m SET feedback = $1
-           FROM assistant.conversations c
-           WHERE m.id = $2 AND m.conversation_id = $3 AND c.id = m.conversation_id AND c.owner_id = $4"#,
+    // Ownership is verified with a portable JOIN (PostgreSQL's `UPDATE ... FROM`
+    // has no cross-engine form). The conversation id it returns is then used to
+    // bump the conversation's delta sequence — the old `AFTER UPDATE` message
+    // trigger — and lets us tell "not found" from "no change" without leaning on
+    // `rows_affected` (which MySQL reports as 0 for an unchanged UPDATE).
+    let owns = st.db.fetch_optional_scalar::<Uuid>(
+        "SELECT m.conversation_id FROM assistant.messages m \
+         JOIN assistant.conversations c ON c.id = m.conversation_id \
+         WHERE m.id = $1 AND m.conversation_id = $2 AND c.owner_id = $3",
+        params![msg_id, conv_id, user.id],
     )
-    .bind(dto.feedback)
-    .bind(msg_id)
-    .bind(conv_id)
-    .bind(user.id)
-    .execute(&st.db)
-    .await?
-    .rows_affected();
-    if affected == 0 {
+    .await?;
+    let Some(cid) = owns else {
         return Err(AssistantError::NotFound("message introuvable".into()));
-    }
+    };
+
+    let mut tx = st.db.begin().await?;
+    tx.execute(
+        "UPDATE assistant.messages SET feedback = $1 WHERE id = $2",
+        params![dto.feedback, msg_id],
+    )
+    .await?;
+    sync::touch_conversation(&mut tx, cid).await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -370,19 +434,27 @@ pub async fn delete_message(
     user: AssistantUser,
     Path((conv_id, msg_id)): Path<(Uuid, Uuid)>,
 ) -> AssistantResult<StatusCode> {
-    let affected = sqlx::query(
-        r#"DELETE FROM assistant.messages m
-           USING assistant.conversations c
-           WHERE m.id = $1 AND m.conversation_id = $2 AND c.id = m.conversation_id AND c.owner_id = $3"#,
+    // Ownership via a portable JOIN (PostgreSQL's `DELETE ... USING` has no
+    // cross-engine form); the conversation id it returns is then bumped so a
+    // client learns the message is gone — replacing the `AFTER DELETE` trigger.
+    let owns = st.db.fetch_optional_scalar::<Uuid>(
+        "SELECT m.conversation_id FROM assistant.messages m \
+         JOIN assistant.conversations c ON c.id = m.conversation_id \
+         WHERE m.id = $1 AND m.conversation_id = $2 AND c.owner_id = $3",
+        params![msg_id, conv_id, user.id],
     )
-    .bind(msg_id)
-    .bind(conv_id)
-    .bind(user.id)
-    .execute(&st.db)
-    .await?
-    .rows_affected();
-    if affected == 0 {
+    .await?;
+    let Some(cid) = owns else {
         return Err(AssistantError::NotFound("message introuvable".into()));
-    }
+    };
+
+    let mut tx = st.db.begin().await?;
+    tx.execute(
+        "DELETE FROM assistant.messages WHERE id = $1",
+        params![msg_id],
+    )
+    .await?;
+    sync::touch_conversation(&mut tx, cid).await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

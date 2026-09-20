@@ -9,6 +9,27 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Changed
+
+- **The Assistant now runs on PostgreSQL, MySQL/MariaDB or SQLite.** The engine
+  is chosen once in configuration (`database.engine`) and read at start-up; the
+  same build connects to whichever is named — a self-hosted instance can keep
+  its conversations, agents and folders in a single SQLite file with no server
+  to run, or point at an existing MySQL/MariaDB. Every conversation, message,
+  agent, folder and provider setting behaves identically on the three engines.
+- **Local-first sync was rebuilt to work the same on every engine.** The change
+  journal that lets a device pull only what changed since it last synced (and
+  learn about deletions) no longer relies on PostgreSQL-only database triggers;
+  it is now maintained by the module itself, so conversations, folders and
+  agents sync correctly whichever database the instance uses.
+
+### Fixed
+
+- **Expired-conversation cleanup now records its deletions for sync.** When the
+  retention policy removes an old conversation, synchronising devices are now
+  reliably told it is gone (previously this depended on a database trigger that
+  only existed on PostgreSQL).
+
 ### Security
 
 - **Database driver updated past an unfixable advisory.** The previous line

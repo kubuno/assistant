@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use kubuno_db::params;
 use uuid::Uuid;
 
 use crate::{
@@ -11,32 +12,47 @@ use crate::{
     middleware::AssistantUser,
     models::{Conversation, ConversationSummary, CreateConversationDto, Message, UpdateConversationDto},
     state::AppState,
+    sync,
 };
+
+/// Columns of a conversation as the API returns it. A macro so it expands to a
+/// string *literal*: the queries stay compile-time `&'static str`.
+macro_rules! cols {
+    () => {
+        "id, owner_id, agent_id, title, model_id, message_count, total_tokens, \
+         is_pinned, is_archived, folder_id, position, created_at, updated_at"
+    };
+}
+
+/// Columns of a message as the API returns it.
+macro_rules! msg_cols {
+    () => {
+        "id, conversation_id, role, content, tool_calls, prompt_tokens, \
+         completion_tokens, feedback, created_at"
+    };
+}
 
 pub async fn list_conversations(
     State(st): State<AppState>,
     user: AssistantUser,
 ) -> AssistantResult<Json<Vec<ConversationSummary>>> {
-    let rows = sqlx::query_as::<_, Conversation>(
-        r#"
-        SELECT id, owner_id, agent_id, title, model_id, message_count, total_tokens,
-               is_pinned, is_archived, folder_id, position, created_at, updated_at
-        FROM assistant.conversations
-        WHERE owner_id = $1 AND is_archived = false AND is_trashed = false
-        ORDER BY is_pinned DESC, position ASC, updated_at DESC
-        "#,
+    let rows = st.db.fetch_all_as::<Conversation>(
+        concat!(
+            "SELECT ", cols!(),
+            " FROM assistant.conversations \
+              WHERE owner_id = $1 AND is_archived = false AND is_trashed = false \
+              ORDER BY is_pinned DESC, position ASC, updated_at DESC",
+        ),
+        params![user.id],
     )
-    .bind(user.id)
-    .fetch_all(&st.db)
     .await?;
 
     let mut summaries = Vec::with_capacity(rows.len());
     for conv in rows {
-        let last_message: Option<String> = sqlx::query_scalar(
+        let last_message: Option<String> = st.db.fetch_optional_scalar::<String>(
             "SELECT content FROM assistant.messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1",
+            params![conv.id],
         )
-        .bind(conv.id)
-        .fetch_optional(&st.db)
         .await?;
 
         summaries.push(ConversationSummary { conversation: conv, last_message });
@@ -50,14 +66,13 @@ pub async fn get_conversation(
     user: AssistantUser,
     Path(id): Path<Uuid>,
 ) -> AssistantResult<Json<Conversation>> {
-    let conv = sqlx::query_as::<_, Conversation>(
-        r#"SELECT id, owner_id, agent_id, title, model_id, message_count, total_tokens,
-                  is_pinned, is_archived, folder_id, position, created_at, updated_at
-           FROM assistant.conversations WHERE id = $1 AND owner_id = $2"#,
+    let conv = st.db.fetch_optional_as::<Conversation>(
+        concat!(
+            "SELECT ", cols!(),
+            " FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
+        ),
+        params![id, user.id],
     )
-    .bind(id)
-    .bind(user.id)
-    .fetch_optional(&st.db)
     .await?
     .ok_or_else(|| AssistantError::NotFound("conversation introuvable".into()))?;
 
@@ -103,29 +118,32 @@ pub async fn create_conversation(
             Some(id)
         }
         None => {
-            sqlx::query_scalar::<_, Uuid>(
+            st.db.fetch_optional_scalar::<Uuid>(
                 "SELECT id FROM assistant.agents WHERE is_system = true ORDER BY created_at LIMIT 1",
+                params![],
             )
-            .fetch_optional(&st.db)
             .await?
         }
     };
 
     let title = dto.title.as_deref().map(ToOwned::to_owned);
+    let id = dto.id.unwrap_or_else(kubuno_db::new_id);
 
-    let conv = sqlx::query_as::<_, Conversation>(
-        r#"INSERT INTO assistant.conversations (id, owner_id, agent_id, title, model_id, provider)
-           VALUES (COALESCE($6, uuid_generate_v4()), $1, $2, $3, $4, $5)
-           RETURNING id, owner_id, agent_id, title, model_id, message_count, total_tokens,
-                     is_pinned, is_archived, folder_id, position, created_at, updated_at"#,
+    let mut tx = st.db.begin().await?;
+    let seq = sync::next_conv_seq(&mut tx).await?;
+    tx.execute(
+        "INSERT INTO assistant.conversations \
+             (id, owner_id, agent_id, title, model_id, provider, change_seq) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        params![id, user.id, agent_id, title, model_id, provider, seq],
     )
-    .bind(user.id)
-    .bind(agent_id)
-    .bind(title)
-    .bind(&model_id)
-    .bind(&provider)
-    .bind(dto.id)
-    .fetch_one(&st.db)
+    .await?;
+    tx.commit().await?;
+
+    let conv = st.db.fetch_one_as::<Conversation>(
+        concat!("SELECT ", cols!(), " FROM assistant.conversations WHERE id = $1"),
+        params![id],
+    )
     .await?;
 
     Ok((StatusCode::CREATED, Json(conv)))
@@ -137,36 +155,61 @@ pub async fn update_conversation(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateConversationDto>,
 ) -> AssistantResult<Json<Conversation>> {
-    // folder_id : Option<Option<Uuid>> → (mettre à jour ?, valeur). `$8` IS NULL
-    // dans la garde quand on ne touche pas au dossier.
+    // folder_id: Option<Option<Uuid>> distinguishes "leave as is" from "move".
     let (set_folder, folder_val) = match dto.folder_id { Some(v) => (true, v), None => (false, None) };
-    let conv = sqlx::query_as::<_, Conversation>(
-        r#"UPDATE assistant.conversations SET
-               title       = COALESCE($3, title),
-               is_pinned   = COALESCE($4, is_pinned),
-               is_archived = COALESCE($5, is_archived),
-               model_id    = COALESCE($6, model_id),
-               folder_id   = CASE WHEN $8 THEN $7 ELSE folder_id END,
-               position    = COALESCE($9, position)
-           WHERE id = $1 AND owner_id = $2
-             -- N'autorise que les dossiers de l'utilisateur (ou la sortie de dossier).
-             AND (NOT $8 OR $7 IS NULL OR EXISTS (
-                   SELECT 1 FROM assistant.folders f WHERE f.id = $7 AND f.owner_id = $2))
-           RETURNING id, owner_id, agent_id, title, model_id, message_count, total_tokens,
-                     is_pinned, is_archived, folder_id, position, created_at, updated_at"#,
+
+    // When moving into a folder, verify it belongs to the caller BEFORE writing.
+    // (The old single UPDATE folded this into an EXISTS guard; a guarded UPDATE
+    // is not portable, so the check is lifted into Rust.) An unreachable folder
+    // yields the same "not found" the whole route gives, disclosing nothing.
+    if let Some(fid) = folder_val {
+        let owns = st.db.fetch_optional_scalar::<i64>(
+            "SELECT 1 FROM assistant.folders WHERE id = $1 AND owner_id = $2",
+            params![fid, user.id],
+        )
+        .await?;
+        if owns.is_none() {
+            return Err(AssistantError::NotFound("conversation introuvable".into()));
+        }
+    }
+
+    let mut tx = st.db.begin().await?;
+    let seq = sync::next_conv_seq(&mut tx).await?;
+    let affected = tx.execute(
+        "UPDATE assistant.conversations SET \
+             title       = COALESCE($1, title), \
+             is_pinned   = COALESCE($2, is_pinned), \
+             is_archived = COALESCE($3, is_archived), \
+             model_id    = COALESCE($4, model_id), \
+             folder_id   = CASE WHEN $5 THEN $6 ELSE folder_id END, \
+             position    = COALESCE($7, position), \
+             change_seq  = $8 \
+         WHERE id = $9 AND owner_id = $10",
+        params![
+            dto.title.as_deref(),
+            dto.is_pinned,
+            dto.is_archived,
+            dto.model.as_deref(),
+            set_folder,
+            folder_val,
+            dto.position,
+            seq,
+            id,
+            user.id
+        ],
     )
-    .bind(id)
-    .bind(user.id)
-    .bind(dto.title.as_deref())
-    .bind(dto.is_pinned)
-    .bind(dto.is_archived)
-    .bind(dto.model.as_deref())
-    .bind(folder_val)
-    .bind(set_folder)
-    .bind(dto.position)
-    .fetch_optional(&st.db)
-    .await?
-    .ok_or_else(|| AssistantError::NotFound("conversation introuvable".into()))?;
+    .await?;
+    if affected == 0 {
+        tx.rollback().await?;
+        return Err(AssistantError::NotFound("conversation introuvable".into()));
+    }
+    tx.commit().await?;
+
+    let conv = st.db.fetch_one_as::<Conversation>(
+        concat!("SELECT ", cols!(), " FROM assistant.conversations WHERE id = $1"),
+        params![id],
+    )
+    .await?;
 
     Ok(Json(conv))
 }
@@ -176,18 +219,29 @@ pub async fn delete_conversation(
     user: AssistantUser,
     Path(id): Path<Uuid>,
 ) -> AssistantResult<StatusCode> {
-    let rows = sqlx::query(
+    // The conversation's messages follow through the foreign-key cascade; they
+    // carry no delta feed of their own, so only the conversation gets a
+    // tombstone, written in the same transaction as the delete.
+    let mut tx = st.db.begin().await?;
+    let seq = sync::next_conv_seq(&mut tx).await?;
+    let affected = tx.execute(
         "DELETE FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
+        params![id, user.id],
     )
-    .bind(id)
-    .bind(user.id)
-    .execute(&st.db)
-    .await?
-    .rows_affected();
-
-    if rows == 0 {
+    .await?;
+    if affected == 0 {
+        tx.rollback().await?;
         return Err(AssistantError::NotFound("conversation introuvable".into()));
     }
+    kubuno_db::journal::record_tombstone(
+        &mut tx,
+        sync::CONV_TOMBSTONES,
+        id,
+        user.id,
+        seq,
+    )
+    .await?;
+    tx.commit().await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -197,26 +251,23 @@ pub async fn list_messages(
     user: AssistantUser,
     Path(id): Path<Uuid>,
 ) -> AssistantResult<Json<Vec<Message>>> {
-    let exists: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
+    let exists = st.db.fetch_optional_scalar::<i64>(
+        "SELECT 1 FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
+        params![id, user.id],
     )
-    .bind(id)
-    .bind(user.id)
-    .fetch_one(&st.db)
     .await?;
 
-    if exists == 0 {
+    if exists.is_none() {
         return Err(AssistantError::NotFound("conversation introuvable".into()));
     }
 
-    let messages = sqlx::query_as::<_, Message>(
-        r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
-           FROM assistant.messages
-           WHERE conversation_id = $1
-           ORDER BY created_at ASC"#,
+    let messages = st.db.fetch_all_as::<Message>(
+        concat!(
+            "SELECT ", msg_cols!(),
+            " FROM assistant.messages WHERE conversation_id = $1 ORDER BY created_at ASC",
+        ),
+        params![id],
     )
-    .bind(id)
-    .fetch_all(&st.db)
     .await?;
 
     Ok(Json(messages))

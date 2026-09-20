@@ -21,7 +21,7 @@
 
 use std::sync::Arc;
 
-use sqlx::PgPool;
+use kubuno_db::{params, DbPool};
 
 use crate::config::{InstanceConfig, Settings};
 use crate::services::{AnthropicService, GoogleService, OllamaService, OpenAiService};
@@ -84,17 +84,17 @@ impl ProviderSet {
     ///
     /// No value read here is ever logged: the rows carry API keys.
     pub async fn load(
-        db:         &PgPool,
+        db:         &DbPool,
         settings:   &Settings,
         instance:   &InstanceConfig,
         boot_local: &Arc<OllamaService>,
     ) -> Self {
         let cap = instance.max_output_tokens;
-        let rows = sqlx::query_as::<_, Row>(
+        let rows = db.fetch_all_as::<Row>(
             "SELECT provider, enabled, api_key, base_url, default_model \
              FROM assistant.provider_config",
+            params![],
         )
-        .fetch_all(db)
         .await
         .unwrap_or_else(|e| {
             tracing::error!(error = %e, "Lecture de la configuration des fournisseurs");
