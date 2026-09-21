@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use kubuno_db::params;
+use kubuno_db::{dialect::SqlType, params};
 use uuid::Uuid;
 
 use crate::{
@@ -163,8 +163,13 @@ pub async fn update_conversation(
     // is not portable, so the check is lifted into Rust.) An unreachable folder
     // yields the same "not found" the whole route gives, disclosing nothing.
     if let Some(fid) = folder_val {
+        // A bare `1` is int4 on PostgreSQL and will not decode into i64; cast it
+        // so the existence probe yields a BIGINT on every engine.
         let owns = st.db.fetch_optional_scalar::<i64>(
-            "SELECT 1 FROM assistant.folders WHERE id = $1 AND owner_id = $2",
+            &format!(
+                "SELECT {} FROM assistant.folders WHERE id = $1 AND owner_id = $2",
+                st.db.backend().cast("1", SqlType::BigInt)
+            ),
             params![fid, user.id],
         )
         .await?;
@@ -251,8 +256,13 @@ pub async fn list_messages(
     user: AssistantUser,
     Path(id): Path<Uuid>,
 ) -> AssistantResult<Json<Vec<Message>>> {
+    // A bare `1` is int4 on PostgreSQL and will not decode into i64; cast it so
+    // the existence probe yields a BIGINT on every engine.
     let exists = st.db.fetch_optional_scalar::<i64>(
-        "SELECT 1 FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
+        &format!(
+            "SELECT {} FROM assistant.conversations WHERE id = $1 AND owner_id = $2",
+            st.db.backend().cast("1", SqlType::BigInt)
+        ),
         params![id, user.id],
     )
     .await?;

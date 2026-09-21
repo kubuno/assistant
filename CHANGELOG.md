@@ -29,6 +29,12 @@ number at release time, and CI publishes that section as the GitHub Release note
   retention policy removes an old conversation, synchronising devices are now
   reliably told it is gone (previously this depended on a database trigger that
   only existed on PostgreSQL).
+- **Moving a conversation into a folder, and opening a conversation's messages,
+  now work on PostgreSQL.** Both actions first check that the target row belongs
+  to you with a small existence probe; on PostgreSQL that probe returned a value
+  of the wrong integer width and failed to decode, so the check errored before
+  the real work could run. The probe is now cast to the width the code reads,
+  and behaves identically on the three engines.
 
 ### Security
 
