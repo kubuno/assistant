@@ -110,7 +110,7 @@ kubuno-storage     = { git = "https://github.com/kubuno/core", tag = "storage-v0
 kubuno-seccomp     = { git = "https://github.com/kubuno/core", tag = "seccomp-v0.1.1", package = "kubuno-seccomp" }
 # Verifies the signed identity token minted by the core (trust boundary).
 kubuno-modauth     = { git = "https://github.com/kubuno/core", tag = "modauth-v0.1.0", package = "kubuno-modauth" }
-kubuno-db          = { git = "https://github.com/kubuno/core", tag = "db-v0.7.0", package = "kubuno-db" }
+kubuno-db          = { git = "https://github.com/kubuno/core", tag = "db-v0.8.0", package = "kubuno-db" }
 
 # Erreurs
 thiserror = "1"
