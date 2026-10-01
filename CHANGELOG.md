@@ -25,6 +25,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Fixed
 
+- **Database migrations keep the same checksum on every OS.** The repository now
+  pins line endings to LF (`.gitattributes`), so a checkout on Windows no longer
+  turns SQL migrations, scripts, manifests or sources into CRLF. A database
+  migrated by a Linux build is therefore no longer refused by a Windows or macOS
+  build of the same version because its migration checksums differ.
+
 - **Expired-conversation cleanup now records its deletions for sync.** When the
   retention policy removes an old conversation, synchronising devices are now
   reliably told it is gone (previously this depended on a database trigger that
