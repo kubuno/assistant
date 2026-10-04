@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "Assistant (Kubuno Core + browser)",
+    "Projects": [
+      {
+        "Path": "Kubuno.Assistant.Server.rsproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "frontend\\Kubuno.Assistant.Web.esproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
