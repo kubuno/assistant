@@ -40,8 +40,9 @@ Assistant is a module for [Kubuno](https://github.com/kubuno/core), the self-hos
 Like every Kubuno app, Assistant is an **independent process**, not a library linked into the core. It registers with the [core](https://github.com/kubuno/core) at startup; the core then proxies its routes (`/api/v1/assistant/*`), distributes platform events to it, serves its runtime-loaded React frontend bundle and manages its lifecycle.
 
 - **Port** — the backend listens on `127.0.0.1:3107` and is reached only through the core's reverse proxy.
-- **Backend** — `src/`: Axum + SQLx over PostgreSQL, confined to the `assistant` schema; migrations in `migrations/`.
-- **Frontend** — `frontend/`: a React 19 bundle built to `entry.js` + `entry.css`, consuming `@kubuno/sdk`, `@ui` (`@kubuno/ui`) and `@kubuno/drive`. At runtime those specifiers are `external` and resolved by the host's import map to its single shared instances; the npm packages are used only for building and type-checking.
+- **Server** — `server/`: Axum + SQLx over PostgreSQL, confined to the `assistant` schema; migrations in `server/migrations/`.
+- **Web** — `web/`: a React 19 bundle built to `entry.js` + `entry.css`, consuming `@kubuno/sdk`, `@ui` (`@kubuno/ui`) and `@kubuno/drive`. At runtime those specifiers are `external` and resolved by the host's import map to its single shared instances; the npm packages are used only for building and type-checking.
+- **Mobile** — `mobile/`: reserved for the mobile apps (see `mobile/README.md`).
 - **Trust boundary** — proxied requests are authenticated from a signed `X-Kubuno-Auth` token minted by the core (see `kubuno-modauth`), never from plain `X-Kubuno-User-*` headers.
 
 ## 📦 Install
@@ -61,8 +62,8 @@ sudo systemctl restart kubuno     # the core loads the module on (re)start
 **Requirements:** Rust ≥ 1.82, Node.js ≥ 24, PostgreSQL 16. No `kubuno/core` checkout is needed — shared Rust crates come from tagged git dependencies, and the `@kubuno/*` frontend libraries from the public npm scope.
 
 ```bash
-cargo build --release                     # → target/release/kubuno-assistant
-cd frontend && npm ci && npm run build     # → dist/{entry.js, entry.css}
+cd server && cargo build --release        # → server/target/release/kubuno-assistant
+cd web && npm ci && npm run build          # → web/dist/{entry.js, entry.css}
 
 bash build_kbpkg.sh                        # → dist/assistant-<version>-<os>-<arch>.kbpkg
 bash build_kbpkg.sh --install              # build, install into the module store, restart
