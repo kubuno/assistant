@@ -16,8 +16,8 @@
 //!   already visible to everyone and are merely read-only;
 //! * an agent id coming from a request body is an *access*, not just a value:
 //!   it must go through here before it is stored or used, otherwise a
-//!   conversation could be pinned to another account's agent and run - and leak
-//!   - its `system_prompt`.
+//!   conversation could be pinned to another account's agent and run - and leak -
+//!   its `system_prompt`.
 
 use kubuno_db::{params, DbPool};
 use uuid::Uuid;
