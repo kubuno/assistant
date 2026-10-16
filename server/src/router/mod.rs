@@ -22,7 +22,7 @@ pub fn build(state: AppState) -> Router {
         // Dossiers (organisation des conversations)
         .route("/folders",     get(folders::list_folders).post(folders::create_folder))
         .route("/folders/:id", axum::routing::patch(folders::update_folder).delete(folders::delete_folder))
-        // Sync deltas (local-first) — MUST precede the /:id catch-alls.
+        // Sync deltas (local-first) - MUST precede the /:id catch-alls.
         .route("/conversations/delta", get(delta::conversations_delta))
         .route("/folders/delta",       get(delta::folders_delta))
         .route("/agents/delta",        get(delta::agents_delta))

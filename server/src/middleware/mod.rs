@@ -51,7 +51,7 @@ impl FromRequestParts<AppState> for AssistantUser {
 ///
 /// Instance-wide provider configuration (API keys, endpoints, default models)
 /// is administrator-only: it must never be readable or writable by an ordinary
-/// authenticated user. Hiding the tab in the frontend is not enough — the route
+/// authenticated user. Hiding the tab in the frontend is not enough - the route
 /// itself has to refuse, otherwise a direct API call bypasses the UI guard.
 #[derive(Debug, Clone)]
 pub struct AssistantAdmin(pub AssistantUser);

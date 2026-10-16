@@ -38,7 +38,7 @@ struct ConvInfo {
 /// bump. Neither survives MySQL/SQLite, so both are done here from Rust. The
 /// primary key is generated in the process (MySQL has no `RETURNING`) and
 /// returned. Matching the old triggers, `message_count`/`total_tokens` only ever
-/// grow — a later delete does not decrement them.
+/// grow - a later delete does not decrement them.
 async fn persist_message(
     db:                &DbPool,
     conversation_id:   Uuid,
@@ -125,9 +125,9 @@ pub async fn send_message(
     // Get agent system prompt + the tools it is allowed to use.
     //
     // The lookup is bound to the caller: owning the conversation is NOT enough to
-    // reach whatever agent id it points at. An agent the user cannot reach — one
+    // reach whatever agent id it points at. An agent the user cannot reach - one
     // that was deleted, or one belonging to another account, which rows written
-    // before this check may still reference — contributes nothing, so the answer
+    // before this check may still reference - contributes nothing, so the answer
     // is generated with no agent prompt instead of borrowing (and, through the
     // model, disclosing) somebody else's `system_prompt`.
     let (system_prompt, enabled_tools): (String, Vec<String>) = match conv.agent_id {
@@ -153,8 +153,8 @@ pub async fn send_message(
         // The last user message's timestamp is read in Rust (PostgreSQL's
         // `'-infinity'::timestamptz` and the reused placeholder are not
         // portable); everything strictly after it is removed. The delete then
-        // bumps the conversation once — replacing the per-row `AFTER DELETE`
-        // trigger — so a client sees the truncation.
+        // bumps the conversation once - replacing the per-row `AFTER DELETE`
+        // trigger - so a client sees the truncation.
         let last_user: Option<chrono::DateTime<chrono::Utc>> = st.db.fetch_optional_scalar(
             "SELECT MAX(created_at) FROM assistant.messages WHERE conversation_id = $1 AND role = 'user'",
             params![conv_id],
@@ -187,7 +187,7 @@ pub async fn send_message(
     // Build history. The instance may cap how far back the model is fed: the
     // newest N messages are selected, then put back in chronological order, so a
     // long conversation stops re-billing its whole past on every turn.
-    // `0` keeps the previous behaviour — replay everything.
+    // `0` keeps the previous behaviour - replay everything.
     let history = if policy.history_window_messages > 0 {
         let mut recent = st.db.fetch_all_as::<Message>(
             r#"SELECT id, conversation_id, role, content, tool_calls, prompt_tokens, completion_tokens, feedback, created_at
@@ -403,8 +403,8 @@ pub async fn set_feedback(
     }
     // Ownership is verified with a portable JOIN (PostgreSQL's `UPDATE ... FROM`
     // has no cross-engine form). The conversation id it returns is then used to
-    // bump the conversation's delta sequence — the old `AFTER UPDATE` message
-    // trigger — and lets us tell "not found" from "no change" without leaning on
+    // bump the conversation's delta sequence - the old `AFTER UPDATE` message
+    // trigger - and lets us tell "not found" from "no change" without leaning on
     // `rows_affected` (which MySQL reports as 0 for an unchanged UPDATE).
     let owns = st.db.fetch_optional_scalar::<Uuid>(
         "SELECT m.conversation_id FROM assistant.messages m \
@@ -436,7 +436,7 @@ pub async fn delete_message(
 ) -> AssistantResult<StatusCode> {
     // Ownership via a portable JOIN (PostgreSQL's `DELETE ... USING` has no
     // cross-engine form); the conversation id it returns is then bumped so a
-    // client learns the message is gone — replacing the `AFTER DELETE` trigger.
+    // client learns the message is gone - replacing the `AFTER DELETE` trigger.
     let owns = st.db.fetch_optional_scalar::<Uuid>(
         "SELECT m.conversation_id FROM assistant.messages m \
          JOIN assistant.conversations c ON c.id = m.conversation_id \

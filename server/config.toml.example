@@ -1,4 +1,4 @@
-# ─── Kubuno Assistant — Configuration ───────────────────────────────────────────
+# ─── Kubuno Assistant - Configuration ───────────────────────────────────────────
 # Copiez ce fichier en config.toml et adaptez les valeurs.
 # Les variables d'environnement préfixées KAS__ surchargent ce fichier.
 # Exemple : KAS__SERVER__PORT=3107

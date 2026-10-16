@@ -234,7 +234,7 @@ impl AgenticProvider for OllamaService {
         messages: &[Value],
         tools: &[Value],
     ) -> Result<AgenticTurn> {
-        // Ollama has no dedicated system field — prepend a system message.
+        // Ollama has no dedicated system field - prepend a system message.
         let mut msgs: Vec<Value> = Vec::with_capacity(messages.len() + 1);
         if !system.is_empty() {
             msgs.push(json!({ "role": "system", "content": system }));

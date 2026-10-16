@@ -1,4 +1,4 @@
-//! Tool execution endpoint — runs a single MCP tool via the core gateway on the
+//! Tool execution endpoint - runs a single MCP tool via the core gateway on the
 //! user's behalf. Used by the UI to execute a `confirm`-gated tool *after* the
 //! user has explicitly approved it (the agentic loop deliberately skips those).
 
@@ -18,7 +18,7 @@ pub struct CallToolDto {
     pub arguments: serde_json::Value,
 }
 
-/// POST /assistant/tools/call — execute `{ tool, arguments }` via the core MCP
+/// POST /assistant/tools/call - execute `{ tool, arguments }` via the core MCP
 /// gateway with the caller's identity. Returns `{ result, is_error }`.
 pub async fn call_tool(
     State(st): State<AppState>,

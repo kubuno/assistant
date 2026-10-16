@@ -58,7 +58,7 @@ impl AnthropicService {
     pub fn default_model(&self) -> &str { &self.default_model }
 
     pub fn list_models(&self) -> Vec<String> {
-        // Anthropic does not have a public list endpoint — return known models
+        // Anthropic does not have a public list endpoint - return known models
         vec![
             "claude-opus-4-5".to_string(),
             "claude-sonnet-4-5".to_string(),

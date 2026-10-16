@@ -282,7 +282,7 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
   },
 
   // Modifier un message utilisateur : on retire ce message ET tout ce qui suit
-  // (comme ChatGPT — la suite est invalidée), puis on renvoie le texte modifié.
+  // (comme ChatGPT - la suite est invalidée), puis on renvoie le texte modifié.
   editUserMessage: async (convId, msgId, content) => {
     const c = content.trim()
     if (!c || get().isStreaming) return

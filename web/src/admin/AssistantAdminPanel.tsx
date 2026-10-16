@@ -8,7 +8,7 @@ import { ModuleAdminRegistry } from '@kubuno/sdk'
 //
 // The scalar policies (models, limits, retention) are declared in module.toml
 // and rendered by the core's generic form on the same pages; this section only
-// covers what a generated form cannot express — a credential that is written
+// covers what a generated form cannot express - a credential that is written
 // but never read back.
 //
 // This surface used to sit in the per-user settings page behind an `adminOnly`
@@ -28,7 +28,7 @@ const PROVIDER_META: Record<string, { name: string; icon: string }> = {
   anthropic: { name: 'Anthropic', icon: '🤖' },
 }
 
-/** The local engine needs no credential — its card hides the key field. */
+/** The local engine needs no credential - its card hides the key field. */
 const LOCAL_PROVIDER = 'ollama'
 
 function ProviderCard({

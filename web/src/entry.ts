@@ -1,5 +1,5 @@
 import { RouteRegistry, WaffleAppRegistry, ModuleSettingsRegistry, useSidebarStore, useToolbarStore, useRightPanelStore, SDK_VERSION, FaviconRegistry } from '@kubuno/sdk'
-/** Bundle MODULE assistant — chargé à l'exécution (cf. vite.module.config). */
+/** Bundle MODULE assistant - chargé à l'exécution (cf. vite.module.config). */
 import { lazy } from 'react'
 import AssistantLogo from './AssistantLogo'
 import AssistantMiniPanel from './AssistantMiniPanel'

@@ -7,7 +7,7 @@
 //! The change feed comes from `kubuno_db::journal::changes_since` (the portable
 //! `live UNION ALL tombstones` the module used to build by hand); the live rows
 //! are then fetched by id with `DbQueryBuilder::push_in`, which renders the
-//! `IN (...)` list — and `IN (NULL)` for an empty page — on every engine. Agents
+//! `IN (...)` list - and `IN (NULL)` for an empty page - on every engine. Agents
 //! need one extra half in their feed (the shared system agents, owner NULL), so
 //! their union is spelled out here rather than taken from `changes_since`.
 
@@ -84,7 +84,7 @@ struct ConvDelta {
     updated_at:    chrono::DateTime<chrono::Utc>,
 }
 
-/// GET /conversations/delta — conversations (all, incl. archived / trashed) +
+/// GET /conversations/delta - conversations (all, incl. archived / trashed) +
 /// tombstones, each modified change inlining its full message list.
 pub async fn conversations_delta(
     State(st): State<AppState>,
@@ -197,7 +197,7 @@ struct AgentChangeRow {
     is_deleted: i64,
 }
 
-/// GET /agents/delta — the owner's agents ∪ shared system agents (owner_id NULL).
+/// GET /agents/delta - the owner's agents ∪ shared system agents (owner_id NULL).
 pub async fn agents_delta(
     State(st): State<AppState>,
     user: AssistantUser,

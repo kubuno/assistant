@@ -6,7 +6,7 @@ import { assistantApi } from './api'
 import { hashTo } from './hashRoute'
 
 /**
- * Assistant side panel — pick up a conversation from wherever you are.
+ * Assistant side panel - pick up a conversation from wherever you are.
  *
  * It lists conversations and hands off to the module; it does NOT embed a second
  * chat surface. Streaming answers, model choice, attachments and agent selection

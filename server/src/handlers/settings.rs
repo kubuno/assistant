@@ -1,10 +1,10 @@
-//! Provider administration — the credentials the module uses to reach an LLM.
+//! Provider administration - the credentials the module uses to reach an LLM.
 //!
 //! These values are SECRETS, so they do not live in the core's settings store
 //! (which answers in clear to anything holding the internal secret) but in the
 //! module's own `assistant.provider_config` table, behind an admin guard. The
 //! key is never returned in full, never echoed back after a write, and never
-//! logged — the API answers with a masked preview and a flag saying whether a
+//! logged - the API answers with a masked preview and a flag saying whether a
 //! key is on file, which is everything a form needs to render.
 //!
 //! A write takes effect immediately: the live provider set is rebuilt from the
@@ -26,7 +26,7 @@ use crate::{
 pub struct ProviderConfig {
     pub provider:      String,
     pub enabled:       bool,
-    /// Masked preview only — never the key itself.
+    /// Masked preview only - never the key itself.
     pub api_key:       String,
     /// Whether a key is on file. Lets the form say "configured" without ever
     /// having to reason about the masked string.
@@ -111,7 +111,7 @@ pub async fn update_provider(
     }
 
     // `NOW()` is not portable; the timestamp is bound. `provider_config` carries
-    // no delta feed, so there is no journal work here — just the write and a
+    // no delta feed, so there is no journal work here - just the write and a
     // re-select (MySQL has no `RETURNING`).
     st.db.execute(
         "UPDATE assistant.provider_config SET \

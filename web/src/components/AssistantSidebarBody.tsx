@@ -23,7 +23,7 @@ const FOCUS_RING = 'outline-none focus-visible:ring-2 focus-visible:ring-primary
  * the layer race. Same approach as the core's SidebarNavItem / LeftRail.
  *
  * Clearing the inline value on mouse leave (empty string, not 'transparent')
- * hands the element back to its static class — an active row keeps its
+ * hands the element back to its static class - an active row keeps its
  * background.
  */
 const hoverBg = (color: string) => ({
@@ -33,7 +33,7 @@ const hoverBg = (color: string) => ({
 
 /**
  * Row hover tint. Same value as the core's SidebarNavItem so this module's rows
- * highlight exactly like mail's — the left panel must feel like ONE sidebar.
+ * highlight exactly like mail's - the left panel must feel like ONE sidebar.
  */
 const ROW_HOVER = 'var(--kb-sidebar-hover, #e8eaed)'  // host-owned token: one hover colour product-wide
 
@@ -295,7 +295,7 @@ function FolderSection({ folder, items, collapsed, onToggle, onRenameFolder, onD
       {!collapsed && (
         <div className="pl-2">
           {items.length ? <SortableList items={items} {...rest} />
-            : <p className="text-xs text-text-tertiary px-3 py-1">Vide — déplacez des conversations ici</p>}
+            : <p className="text-xs text-text-tertiary px-3 py-1">Vide - déplacez des conversations ici</p>}
         </div>
       )}
     </div>

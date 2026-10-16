@@ -2,12 +2,12 @@
 //! them in the console.
 //!
 //! Declared by `module.toml`'s `[[settings]]`, stored in `core.settings`, and read
-//! back here through `/internal/modules/assistant/settings` — a module owns its
+//! back here through `/internal/modules/assistant/settings` - a module owns its
 //! own schema and cannot read the core's tables, and a background worker has no
 //! user token for the public config route.
 //!
 //! Every field here is read by code that acts on it: a knob that changes nothing
-//! is worse than an absent one. Provider credentials are deliberately NOT here —
+//! is worse than an absent one. Provider credentials are deliberately NOT here -
 //! a secret has no place in the core's settings store, which answers in clear to
 //! anything holding the internal secret. They stay in the module's own
 //! `assistant.provider_config` table, behind the guarded admin routes.

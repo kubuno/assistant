@@ -13,7 +13,7 @@ use super::provider::DEFAULT_MAX_OUTPUT_TOKENS;
 /// Header the API accepts for its credential.
 ///
 /// This provider also reads the key from a `key=` query parameter, which is what
-/// this client used to do — and a query string ends up in proxy logs, in browser
+/// this client used to do - and a query string ends up in proxy logs, in browser
 /// history when copied, and in any error text that quotes the URL back. The
 /// header carries the same value where nothing echoes it.
 const API_KEY_HEADER: &str = "x-goog-api-key";
@@ -62,8 +62,8 @@ impl GoogleService {
 
     /// Streaming endpoint for `model`.
     ///
-    /// `model` is caller-supplied — it comes from the request body, and an
-    /// instance with an empty model allowlist (the default) accepts any string —
+    /// `model` is caller-supplied - it comes from the request body, and an
+    /// instance with an empty model allowlist (the default) accepts any string -
     /// so it is percent-encoded as a single path segment instead of being
     /// interpolated raw. The credential is NOT in this URL: it goes in a header,
     /// which is what makes the URL safe to log or to quote in an error.

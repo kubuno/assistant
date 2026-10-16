@@ -11,7 +11,7 @@ pub struct AppState {
     pub settings: Arc<Settings>,
     /// Admin-editable instance settings, refreshed in the background from the core.
     pub instance: Arc<RwLock<InstanceConfig>>,
-    /// LLM services as of the last reload — rebuilt from `assistant.provider_config`
+    /// LLM services as of the last reload - rebuilt from `assistant.provider_config`
     /// whenever an administrator changes a provider, and on the settings refresh.
     pub providers: Arc<RwLock<ProviderSet>>,
     /// The locally hosted engine as built at start-up. Kept so a reload that
@@ -31,7 +31,7 @@ impl AppState {
     }
 
     /// Snapshot of the live provider set. Cheap: four reference-counted handles.
-    /// A poisoned lock still yields the last written set — dropping every
+    /// A poisoned lock still yields the last written set - dropping every
     /// provider would silently break every conversation.
     pub fn providers(&self) -> ProviderSet {
         match self.providers.read() {

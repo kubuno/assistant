@@ -14,7 +14,7 @@ use std::time::Duration;
 
 // ── CLI dispatch ──────────────────────────────────────────────────────────────
 
-/// Called by `kubuno assistant:<cmd>` — the first arg is the sub-command name.
+/// Called by `kubuno assistant:<cmd>` - the first arg is the sub-command name.
 /// Additional args are passed through.
 async fn run_cli_command(cmd: &str, args: &[String]) -> Result<()> {
     let settings = Settings::load().context("Chargement configuration")?;
@@ -91,7 +91,7 @@ async fn run_cli_command(cmd: &str, args: &[String]) -> Result<()> {
                 for a in &agents {
                     let tag = if a.is_system { "[système]" } else { "[perso]  " };
                     let desc = a.description.as_deref().unwrap_or("");
-                    println!("  {} {} — {}", tag, a.name, desc);
+                    println!("  {} {} - {}", tag, a.name, desc);
                 }
                 println!("\n  {} agent(s) au total", agents.len());
             }
@@ -149,7 +149,7 @@ struct SettingGroupRaw {
 }
 
 /// One `[[settings]]` entry from module.toml, forwarded verbatim. The bounds are
-/// part of the payload so the core's write path enforces them too — a console can
+/// part of the payload so the core's write path enforces them too - a console can
 /// be bypassed, a server-side check cannot.
 #[derive(Deserialize, serde::Serialize)]
 struct SettingDefRaw {
@@ -234,7 +234,7 @@ fn load_manifest() -> Option<Manifest> {
 /// Whether two settings snapshots would produce the SAME provider set.
 ///
 /// Only these two fields reach the constructors, so comparing them avoids
-/// rebuilding four HTTP clients — and dropping their connection pools — once a
+/// rebuilding four HTTP clients - and dropping their connection pools - once a
 /// minute for nothing.
 fn same_policy(a: &InstanceConfig, b: &InstanceConfig) -> bool {
     a.allow_cloud_providers == b.allow_cloud_providers
@@ -247,7 +247,7 @@ fn same_policy(a: &InstanceConfig, b: &InstanceConfig) -> bool {
 /// somebody still uses is not old. Messages follow through the foreign key.
 /// A cascade runs no application code, so the delta tombstone of each removed
 /// conversation is written explicitly here (in the same transaction as its
-/// delete) — otherwise a synchronising client would never learn of the removal.
+/// delete) - otherwise a synchronising client would never learn of the removal.
 /// `0` = kept forever.
 async fn purge_expired_conversations(state: &AppState) {
     use kubuno_assistant::sync;
@@ -470,7 +470,7 @@ async fn main() -> Result<()> {
                 match http2.post(&url).header("X-Internal-Secret", secret.as_str()).send().await {
                     Ok(r) if r.status().is_success() => {}
                     Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
-                        tracing::info!("Heartbeat 404 — ré-enregistrement…");
+                        tracing::info!("Heartbeat 404 - ré-enregistrement…");
                         register_with_core(&http2, &settings2).await;
                     }
                     Ok(r) if r.status() == reqwest::StatusCode::FORBIDDEN => {

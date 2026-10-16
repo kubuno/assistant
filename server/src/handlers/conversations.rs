@@ -107,7 +107,7 @@ pub async fn create_conversation(
 
     // Pinning a conversation to an agent IS an access to that agent: the id must
     // be one the user may reach, otherwise anybody could bind a conversation of
-    // their own to a stranger's agent and have the model run — and reveal — its
+    // their own to a stranger's agent and have the model run - and reveal - its
     // system prompt. An id that is unknown and one that belongs to somebody else
     // get the very same answer, so the route cannot be used to probe ids.
     let agent_id = match dto.agent_id {

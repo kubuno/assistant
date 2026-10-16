@@ -1,13 +1,13 @@
 //! Runs the assistant module's own migrations and its delta / array-column
 //! plumbing against a real server of **each** engine, from a single compiled
-//! binary — the proof that the engine is a run-time choice, not a build-time
+//! binary - the proof that the engine is a run-time choice, not a build-time
 //! one, and that the two recently-ported primitives (delta sync and the JSON
 //! array column) behave identically on all of them.
 //!
 //! The module's write paths live in axum handlers that need a full `AppState`
 //! (provider set, HTTP clients, …); rather than stand that up, this test drives
-//! the very same DB operations the handlers perform — through `kubuno_db`, the
-//! module's `sync` helpers and its public `agent_access` reader — so the schema,
+//! the very same DB operations the handlers perform - through `kubuno_db`, the
+//! module's `sync` helpers and its public `agent_access` reader - so the schema,
 //! the journal and the array column are all exercised end to end.
 //!
 //! * SQLite always runs (a temp file, no server).

@@ -4,12 +4,12 @@
 //!
 //! * a URL path built from a value the caller chose is assembled through `Url`,
 //!   which percent-encodes every segment. The model identifier comes straight
-//!   from the request body, and an instance whose model allowlist is empty — the
-//!   default — accepts any string; interpolated raw, a `/`, a `?` or a `#` in it
+//!   from the request body, and an instance whose model allowlist is empty - the
+//!   default - accepts any string; interpolated raw, a `/`, a `?` or a `#` in it
 //!   re-pointed the request at another endpoint of the provider, or truncated
 //!   the URL and dropped what followed;
 //! * a credential never travels in a URL when the provider accepts a header,
-//!   and any text we quote back — a provider's error body, an address — goes
+//!   and any text we quote back - a provider's error body, an address - goes
 //!   through `redact` first. An error raised down here reaches the client as the
 //!   body of a 503 (`AssistantError::OllamaUnavailable` renders its message),
 //!   so everything it carries must be assumed public.
@@ -21,7 +21,7 @@ use url::Url;
 ///
 /// Encoding is what makes this safe: `/`, `?`, `#` and `%` inside a segment come
 /// out escaped, so a hostile value can only ever name one path segment. A `:`
-/// is left alone — the sub-resource syntax some providers use (`…/models/
+/// is left alone - the sub-resource syntax some providers use (`…/models/
 /// <model>:<method>`) needs it, and a colon cannot leave the path.
 pub fn endpoint(base: &str, segments: &[&str]) -> Result<Url> {
     let mut url = Url::parse(base.trim()).context("adresse du fournisseur invalide")?;
@@ -39,7 +39,7 @@ pub fn endpoint(base: &str, segments: &[&str]) -> Result<Url> {
     Ok(url)
 }
 
-/// A URL as it may safely be shown — scheme, host, port and path, nothing else.
+/// A URL as it may safely be shown - scheme, host, port and path, nothing else.
 ///
 /// The query string is where a provider asks for a key, and a URL may also embed
 /// `user:password@`. Neither belongs in a log line or in an error the client
@@ -57,7 +57,7 @@ pub fn shown(url: &Url) -> String {
 ///
 /// Belt and braces for text we did not write: a provider's error body is quoted
 /// back to the user, and a provider that echoes the request it refused would
-/// echo the credential with it. A secret under 8 characters is left alone — it
+/// echo the credential with it. A secret under 8 characters is left alone - it
 /// is not a real credential, and masking it would mangle unrelated words.
 pub fn redact(text: &str, secret: &str) -> String {
     let secret = secret.trim();

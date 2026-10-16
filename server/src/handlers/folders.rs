@@ -125,8 +125,8 @@ pub async fn delete_folder(
     // Deleting a folder detaches its conversations (they are not deleted). The
     // PostgreSQL trigger design leaned on `ON DELETE SET NULL` firing the
     // conversation's BEFORE UPDATE bump; a foreign-key cascade runs no code on
-    // MySQL/SQLite, so the detach — and the change_seq bump that lets a client
-    // learn `folder_id` became NULL — is done explicitly here, in one
+    // MySQL/SQLite, so the detach - and the change_seq bump that lets a client
+    // learn `folder_id` became NULL - is done explicitly here, in one
     // transaction with the folder's own delete and tombstone.
     let mut tx = st.db.begin().await?;
     let folder_seq = sync::next_folder_seq(&mut tx).await?;

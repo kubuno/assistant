@@ -2,7 +2,7 @@
 //!
 //! Until this existed the four services were built ONCE at boot from the on-disk
 //! deploy config, while the administration screen wrote to
-//! `assistant.provider_config` — a table nothing ever read. An administrator who
+//! `assistant.provider_config` - a table nothing ever read. An administrator who
 //! pasted a key saw it saved and nothing happened. The table is now the source of
 //! truth: this module rebuilds the services from it, and the set is swapped in
 //! place so an edit takes effect on the next message rather than the next
@@ -11,7 +11,7 @@
 //! Two other rules are enforced here, at the single point every request goes
 //! through rather than scattered across the handlers:
 //!   * a remote provider the instance policy forbids is simply not built, so
-//!     nothing downstream can reach it — not the dispatcher, not the agentic
+//!     nothing downstream can reach it - not the dispatcher, not the agentic
 //!     loop, not the model picker;
 //!   * a base address that is not plain http(s) is refused, so a malformed row
 //!     cannot turn a credentialed request into something other than an HTTP call.

@@ -2,7 +2,7 @@
 id           = "assistant"
 display_name = "Assistant"
 version      = "0.1.8"
-description  = "Assistant IA self-hosted — Ollama local, multi-modèles, agents personnalisés."
+description  = "Assistant IA self-hosted - Ollama local, multi-modèles, agents personnalisés."
 author       = "Kubuno Contributors"
 license      = "AGPL-3.0"
 homepage_url = "https://github.com/kubuno/kubuno"

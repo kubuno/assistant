@@ -174,7 +174,7 @@ export default function ChatInput({ convId, onConvCreated, inputId }: Props) {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {/* Saisie vocale — toast éditable centré (hook partagé du SDK).
+              {/* Saisie vocale - toast éditable centré (hook partagé du SDK).
                   Masquée si l'admin a désactivé la reconnaissance ou si le
                   module STT est absent. */}
               {voice.enabled && (

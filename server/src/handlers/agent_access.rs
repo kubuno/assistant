@@ -1,10 +1,10 @@
-//! Agent access control — the one place that decides which agents a user may
+//! Agent access control - the one place that decides which agents a user may
 //! read, use or edit.
 //!
 //! An agent is reachable when the caller owns it, or when it is one of the
 //! system agents the module ships with (`owner_id IS NULL`, `is_system = true`)
 //! that every account shares. Nothing else grants access: the `is_public` column
-//! of `assistant.agents` is dormant — no route sets it and no listing reads it —
+//! of `assistant.agents` is dormant - no route sets it and no listing reads it -
 //! so it deliberately opens nothing here. The day sharing is implemented, this
 //! module is the single file to change.
 //!
@@ -16,8 +16,8 @@
 //!   already visible to everyone and are merely read-only;
 //! * an agent id coming from a request body is an *access*, not just a value:
 //!   it must go through here before it is stored or used, otherwise a
-//!   conversation could be pinned to another account's agent and run — and leak
-//!   — its `system_prompt`.
+//!   conversation could be pinned to another account's agent and run - and leak
+//!   - its `system_prompt`.
 
 use kubuno_db::{params, DbPool};
 use uuid::Uuid;
@@ -59,7 +59,7 @@ pub fn is_reachable(owner_id: Option<Uuid>, is_system: bool, user_id: Uuid) -> b
     is_system || owner_id == Some(user_id)
 }
 
-/// The error every caller returns for an agent it may not touch — identical to
+/// The error every caller returns for an agent it may not touch - identical to
 /// the one for an id that does not exist at all.
 pub fn not_found() -> AssistantError {
     AssistantError::NotFound("agent introuvable".into())

@@ -1,6 +1,6 @@
 //! Provider-agnostic agentic tool-calling loop. Each round: call the model with
 //! the tool catalog; if it requests tools, execute each via the core MCP gateway
-//! (or hand `kubuno_ui` tools to the client), feed the results back, and loop —
+//! (or hand `kubuno_ui` tools to the client), feed the results back, and loop -
 //! until the model returns a final text answer.
 //!
 //! Message shaping differs per provider (Anthropic uses tool_use/tool_result
@@ -9,7 +9,7 @@
 //!
 //! Non-streaming within the loop (one completion per round): tool-calling needs
 //! the full structured response before acting. The final answer is emitted as a
-//! single Delta — token-by-token streaming inside the loop is a follow-up.
+//! single Delta - token-by-token streaming inside the loop is a follow-up.
 
 use std::collections::HashMap;
 use std::sync::Arc;

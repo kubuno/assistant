@@ -25,7 +25,7 @@ pub struct Agent {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateAgentDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     pub name:          String,

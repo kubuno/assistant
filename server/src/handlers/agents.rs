@@ -136,7 +136,7 @@ pub async fn create_agent(
     tx.rollback().await?;
 
     // A local-first client replaying its own creation gets its agent back; an id
-    // held by anybody else gets the plain "not found" — the caller learns
+    // held by anybody else gets the plain "not found" - the caller learns
     // nothing about whose it is or what it holds.
     let Some(id) = dto.id else {
         tracing::error!("collision d'identifiant sur un agent généré par la base");
@@ -168,8 +168,8 @@ pub async fn update_agent(
     Json(dto): Json<UpdateAgentDto>,
 ) -> AssistantResult<Json<Agent>> {
     // Scoped to the caller: an agent owned by somebody else is "not found", the
-    // same answer an unknown id gets. Only the shared system agents — which every
-    // account already sees — are refused as forbidden, because they are read-only.
+    // same answer an unknown id gets. Only the shared system agents - which every
+    // account already sees - are refused as forbidden, because they are read-only.
     match agent_access::reachable(&st.db, id, user.id).await? {
         None        => return Err(agent_access::not_found()),
         Some(true)  => return Err(AssistantError::Forbidden),

@@ -1,4 +1,4 @@
-# Kubuno Assistant — mobile apps
+# Kubuno Assistant - mobile apps
 
 Reserved for the mobile clients of the Assistant module, organised like the other platforms of this repository:
 

@@ -11,7 +11,7 @@ interface Props {
 }
 
 // Extrait le texte brut d'un arbre de nœuds React (les blocs surlignés par
-// rehype-highlight contiennent des <span> imbriqués) — pour le bouton « Copier ».
+// rehype-highlight contiennent des <span> imbriqués) - pour le bouton « Copier ».
 function nodeText(node: ReactNode): string {
   if (node == null || node === false) return ''
   if (typeof node === 'string' || typeof node === 'number') return String(node)

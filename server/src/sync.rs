@@ -5,7 +5,7 @@
 //! to be a `SEQUENCE` plus `BEFORE UPDATE` / `AFTER DELETE` triggers (migration
 //! 000006); here it is the portable [`kubuno_db::journal`] primitive, driven
 //! from Rust at every write site. This module holds the literal table / domain
-//! names those calls take — all `&'static str`, never request data — so the
+//! names those calls take - all `&'static str`, never request data - so the
 //! write sites read uniformly and a rename happens in one place.
 //!
 //! Three entities are versioned: **conversations**, **folders** and **agents**.
@@ -46,7 +46,7 @@ pub async fn next_agent_seq(tx: &mut kubuno_db::DbTx) -> Result<i64, sqlx::Error
     kubuno_db::journal::next_seq(tx, CHANGE_COUNTER, AGENT_DOMAIN).await
 }
 
-/// Bumps a **conversation** to a fresh sequence — the portable replacement for
+/// Bumps a **conversation** to a fresh sequence - the portable replacement for
 /// the old `trg_msg_bump_conv` no-op trigger. Called after any message write
 /// (insert, feedback update, delete, regenerate) so a synchronising client sees
 /// the conversation change.
